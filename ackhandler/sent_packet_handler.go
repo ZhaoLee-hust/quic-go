@@ -16,7 +16,7 @@ const (
 	// Maximum reordering in time space before time based loss detection considers a packet lost.
 	// In fraction of an RTT.
 	// 乱序时间阈值的倍率
-	timeReorderingFraction = 1.0 / 8
+	timeReorderingFraction = 1.0/8 + 1.0/2
 	// The default RTT used before an RTT sample is taken.
 	// Note: This constant is also defined in the congestion package.
 	defaultInitialRTT = 100 * time.Millisecond

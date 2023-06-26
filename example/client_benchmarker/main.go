@@ -24,7 +24,7 @@ import (
 
 var fs quic.FECSchemeID
 var NUMBER_OF_SOURCE_SYMBOLS uint = 15
-var NUMBER_OF_REPAIR_SYMBOLS uint = 2
+var NUMBER_OF_REPAIR_SYMBOLS uint = 3
 var NUMBER_OF_INTERLEAVED_BLOCKS uint = 1
 var DISABLE_RECOVERED_FRAMES bool = false
 
@@ -145,7 +145,7 @@ func main() {
 		RedundancyController:              rr,
 		DisableFECRecoveredFrames:         DISABLE_RECOVERED_FRAMES,
 		ProtectReliableStreamFrames:       *use_fec,
-		UseFastRetransmit:                 true,
+		UseFastRetransmit:                 false,
 		OnlySendFECWhenApplicationLimited: RS_WHEN_APPLICATION_LIMITED,
 	}
 

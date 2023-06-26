@@ -139,7 +139,7 @@ func (f *FECFrameworkReceiver) updateStateForSomeFECGroup(fecBlockNumber protoco
 			group.TotalNumberOfRepairSymbols,
 			len(recoveredPackets))
 		utils.Debugf(writeString)
-		// utils.Infof("-----------------------------------------------")
+		// ("-----------------------------------------------")
 
 		if len(recoveredPackets) == 0 {
 			return errors.New("the fec scheme hasn't recovered any packet although it indicated that it could")
