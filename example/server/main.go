@@ -160,7 +160,7 @@ func main() {
 		RedundancyController:              rr,
 		DisableFECRecoveredFrames:         DISABLE_RECOVERED_FRAMES,
 		ProtectReliableStreamFrames:       *use_fec,
-		UseFastRetransmit:                 false,
+		UseFastRetransmit:                 true,
 		OnlySendFECWhenApplicationLimited: RS_WHEN_APPLICATION_LIMITED,
 		// Versions:             []quic.VersionNumber{version},
 

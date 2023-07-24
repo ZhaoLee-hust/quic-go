@@ -20,6 +20,7 @@ import (
 	"github.com/lucas-clemente/quic-go/h2quic"
 	"github.com/lucas-clemente/quic-go/internal/protocol"
 	"github.com/lucas-clemente/quic-go/internal/utils"
+	// _ "net/http/pprof"
 )
 
 var fs quic.FECSchemeID
@@ -32,6 +33,9 @@ var DISABLE_RECOVERED_FRAMES bool = false
 var RS_WHEN_APPLICATION_LIMITED = false
 
 func main() {
+	// go func() {
+	// 	log.Println(http.ListenAndServe("localhost:6060", nil))
+	// }()
 	verbose := flag.Bool("v", false, "verbose")
 	multipath := flag.Bool("m", false, "multipath")
 	output := flag.String("o", "", "logging output")
@@ -145,7 +149,7 @@ func main() {
 		RedundancyController:              rr,
 		DisableFECRecoveredFrames:         DISABLE_RECOVERED_FRAMES,
 		ProtectReliableStreamFrames:       *use_fec,
-		UseFastRetransmit:                 false,
+		UseFastRetransmit:                 true,
 		OnlySendFECWhenApplicationLimited: RS_WHEN_APPLICATION_LIMITED,
 	}
 

@@ -1,6 +1,8 @@
 package fec
 
 import (
+	"log"
+
 	"github.com/lucas-clemente/quic-go/internal/protocol"
 	"github.com/lucas-clemente/quic-go/internal/wire"
 )
@@ -9,11 +11,15 @@ const DEFAULT_MAX_TRACE_BLOCKS = 5000
 const SYMBOL_GAP = 5
 
 type BlockTracker struct {
-	ReceivedFrames     map[protocol.FECBlockNumber][]map[protocol.FecFrameOffset]*wire.FECFrame
-	ReceivedSymbol     map[protocol.FECBlockNumber][]*RepairSymbol
-	lastReceivedSymbol protocol.NumberOfAckedSymbol
-	isExpiredBlocks    map[protocol.FECBlockNumber]bool
+	ReceivedFrames              map[protocol.FECBlockNumber][]map[protocol.FecFrameOffset]*wire.FECFrame
+	ReceivedSymbol              map[protocol.FECBlockNumber][]*RepairSymbol
+	lastReceivedSymbol          protocol.NumberOfAckedSymbol
+	isExpiredBlocks             map[protocol.FECBlockNumber]bool
+	totalNumberOfFramesReceived uint64
+	// totalNumberOfFramesComing   uint64
 }
+
+var _ SymbolBlockTracker = &BlockTracker{}
 
 func NewBlockTracker(maxTrace uint64) *BlockTracker {
 	// 暂时不用
@@ -32,31 +38,36 @@ func NewBlockTracker(maxTrace uint64) *BlockTracker {
 // 并且适当生成Symbol并统计
 func (b *BlockTracker) ReceivedNewFECFrame(frame *wire.FECFrame) {
 	if _, ok := b.isExpiredBlocks[frame.FECBlockNumber]; ok {
+		log.Printf("isExpiredBlocks with BlockNumber: %d", frame.FECBlockNumber)
 		return
 	}
 	// add frame if not already present
-	FramesInBlock := b.ReceivedFrames[frame.FECBlockNumber]
-
+	SymbolsInBlock := b.ReceivedFrames[frame.FECBlockNumber]
 	// 补齐,将[]map的长度扩充到Symbol的个数
-	if len(FramesInBlock) <= int(frame.RepairSymbolNumber) {
-		delta := int(frame.RepairSymbolNumber) - len(FramesInBlock)
+	if len(SymbolsInBlock) <= int(frame.RepairSymbolNumber) {
+		delta := int(frame.RepairSymbolNumber) - len(SymbolsInBlock)
 		for i := 0; i <= delta; i++ {
-			FramesInBlock = append(FramesInBlock, make(map[protocol.FecFrameOffset]*wire.FECFrame))
+			SymbolsInBlock = append(SymbolsInBlock, make(map[protocol.FecFrameOffset]*wire.FECFrame))
 		}
-		b.ReceivedFrames[frame.FECBlockNumber] = FramesInBlock
+		b.ReceivedFrames[frame.FECBlockNumber] = SymbolsInBlock
 	}
-
-	FramesInSymbol := FramesInBlock[frame.RepairSymbolNumber]
+	// log.Printf("BlockNumber: %d, RepairSymbolNumder: %d, SymbolsInThisBlock: %d", frame.FECBlockNumber, frame.RepairSymbolNumber, len(b.ReceivedFrames[frame.FECBlockNumber]))
+	log.Printf("blockNumber: %d, odd: %d, new: %d", frame.FECBlockNumber, len(SymbolsInBlock), len(b.ReceivedFrames[frame.FECBlockNumber]))
+	FramesInSymbol := SymbolsInBlock[frame.RepairSymbolNumber]
 	if _, ok := FramesInSymbol[frame.Offset]; !ok {
 		// 定位Group--定位某个Symbol的--定位到具体的Frame
 		FramesInSymbol[frame.Offset] = frame
+		SymbolsInBlock[frame.RepairSymbolNumber] = FramesInSymbol
+		b.totalNumberOfFramesReceived++
 	}
 	symbol, _, _ := b.UpdateNewlyConfirmedSymbols(frame)
 	if symbol != nil {
 		b.ReceivedSymbol[frame.FECBlockNumber] = append(b.ReceivedSymbol[frame.FECBlockNumber], symbol)
+		// log.Printf("NewSymbol with SymbolNumber: %d", symbol.SymbolNumber)
 	}
 	// 适当删除某个Block,注意是整个block一起删除
 	symbolsForTheBlock := b.ReceivedSymbol[frame.FECBlockNumber]
+	log.Printf("SymbolsInTheBlock: %d, NumberOfSymbols: %d, SymbolNumber: %d", len(symbolsForTheBlock), symbol.NumberOfRepairSymbols, frame.RepairSymbolNumber)
 	if len(symbolsForTheBlock) >= int(symbol.NumberOfRepairSymbols) {
 		delete(b.ReceivedFrames, frame.FECBlockNumber)
 		b.isExpiredBlocks[frame.FECBlockNumber] = true
@@ -107,7 +118,8 @@ func (b *BlockTracker) UpdateNewlyConfirmedSymbols(receivedFrame *wire.FECFrame)
 				SymbolNumber:      receivedFrame.RepairSymbolNumber,
 				// ??不太能理解
 				// 明白了！这是因为waitingFramesForSymbol只有1个，说明当然frame自带finbit，即带有一个完整symbol的载荷
-				Data: receivedFrame.Data,
+				Data:                  receivedFrame.Data,
+				NumberOfRepairSymbols: receivedFrame.NumberOfRepairSymbols, // modify
 			}
 			return symbol, int(receivedFrame.NumberOfPackets), int(receivedFrame.NumberOfRepairSymbols)
 		}
@@ -164,10 +176,11 @@ func (b *BlockTracker) UpdateNewlyConfirmedSymbols(receivedFrame *wire.FECFrame)
 			nRepairSymbols = orderedFrames[0].NumberOfRepairSymbols
 		}
 		return &RepairSymbol{
-			FECSchemeSpecific: receivedFrame.FECSchemeSpecific,
-			FECBlockNumber:    fecBlockNumber,
-			Data:              payloadData,
-			SymbolNumber:      receivedFrame.RepairSymbolNumber,
+			FECSchemeSpecific:     receivedFrame.FECSchemeSpecific,
+			FECBlockNumber:        fecBlockNumber,
+			Data:                  payloadData,
+			SymbolNumber:          receivedFrame.RepairSymbolNumber,
+			NumberOfRepairSymbols: receivedFrame.NumberOfRepairSymbols, // modify
 		}, int(nPackets), int(nRepairSymbols)
 	}
 }

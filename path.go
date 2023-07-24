@@ -1,7 +1,6 @@
 package quic
 
 import (
-	"log"
 	"time"
 
 	"github.com/lucas-clemente/quic-go/ackhandler"
@@ -243,7 +242,7 @@ func (p *path) handlePacketImpl(pkt *receivedPacket) (*unpackedPacket, error) {
 		hdr.PacketNumber,
 	)
 
-	log.Printf("Received New Packet With Packet Number: %d", hdr.PacketNumber)
+	// log.Printf("Received New Packet With Packet Number: %d", hdr.PacketNumber)
 
 	packet, err := p.sess.GetUnpacker().Unpack(hdr.Raw, hdr, data, pkt.recovered)
 	if utils.Debug() {

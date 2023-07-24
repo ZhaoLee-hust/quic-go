@@ -676,8 +676,6 @@ func (s *session) handlePacketImpl(p *receivedPacket) error {
 		if len(diversificationNonce) > 0 {
 			s.cryptoSetup.SetDiversificationNonce(diversificationNonce)
 		}
-		// add by zhaolee
-		// log.Printf("Received New Packet With Packet Number: %d", p.header.PacketNumber)
 	}
 
 	if p.rcvTime.IsZero() {
