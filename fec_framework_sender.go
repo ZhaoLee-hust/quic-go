@@ -61,18 +61,20 @@ type FECFrameworkSender struct {
 	nextEncodingSymbolID protocol.FECEncodingSymbolID
 	fecWindow            *fec.FECWindow
 	sess                 *session
-	numberOfSymbols      int
-	numberOfSymbolsAcked int
-	// TempCount            int
+	// add by zhaolee
+	// 统计发送的全部Symbol个数
+	numberOfSymbols uint64
+	// 统计被确认的Symbol个数,总数
+	numberOfSymbolsAcked uint64
 }
 
 var FECFrameworkSenderPacketHandledWithWrongFECGroup = errors.New("FECFrameworkSender: A packet with the wrong FEC Group Number has been added")
 
 func (f *FECFrameworkSender) handleSymbolACKFrame(frame *wire.SymbolAckFrame) {
 	utils.Debugf("Acked Symbol: %d", frame.SymbolReceived)
-	f.numberOfSymbolsAcked = int(frame.SymbolReceived)
-	// log.Print("frame.SymbolReceived: %d", frame.SymbolReceived)
-	// todo
+	f.numberOfSymbolsAcked = uint64(frame.SymbolReceived)
+	symbolLossRate := float64(f.numberOfSymbols-f.numberOfSymbolsAcked) / float64(f.numberOfSymbols)
+	log.Printf("Dynamic Symbol Sent: %d, ACKed: %d, LossRate: %f", f.numberOfSymbols, f.numberOfSymbolsAcked, symbolLossRate)
 }
 
 // TODO define a window size and a spacing
@@ -172,7 +174,7 @@ func (f *FECFrameworkSender) HandlePacketAndMaybePushRS(packet []byte, hdr *wire
 		fecContainer.PrepareToSend() // will never error thanks to the ShouldBeSent check
 		symbols := fecContainer.GetRepairSymbols()
 		f.fecFramer.pushRepairSymbols(symbols)
-		f.numberOfSymbols += len(symbols)
+		f.numberOfSymbols += uint64(len(symbols))
 		utils.Debugf("numberOfSymbols has been sent: %d", f.numberOfSymbols)
 	}
 
