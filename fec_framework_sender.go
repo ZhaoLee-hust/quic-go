@@ -72,6 +72,7 @@ var FECFrameworkSenderPacketHandledWithWrongFECGroup = errors.New("FECFrameworkS
 
 func (f *FECFrameworkSender) handleSymbolACKFrame(frame *wire.SymbolAckFrame) {
 	utils.Debugf("Acked Symbol: %d", frame.SymbolReceived)
+	// f.
 	f.numberOfSymbolsAcked = uint64(frame.SymbolReceived)
 	symbolLossRate := float64(f.numberOfSymbols-f.numberOfSymbolsAcked) / float64(f.numberOfSymbols)
 	log.Printf("Dynamic Symbol Sent: %d, ACKed: %d, LossRate: %f", f.numberOfSymbols, f.numberOfSymbolsAcked, symbolLossRate)

@@ -72,6 +72,9 @@ type sentPacketHandler struct {
 	packetHistory      *PacketList
 	stopWaitingManager stopWaitingManager
 
+	// 阈值控制器
+	thresholdController *ThreshController
+
 	retransmissionQueue []*Packet
 	// 类型为ByteCount
 	bytesInFlight protocol.ByteCount
@@ -120,7 +123,7 @@ type sentPacketHandler struct {
 	// FEC冗余控制器的收包回调函数
 	onPacketReceived func(protocol.PacketNumber)
 
-	// ？类型三uint64，应该指示数据包个数
+	// uint64，指示数据包个数
 	packets uint64
 	// 重传个数
 	retransmissions uint64
@@ -129,9 +132,6 @@ type sentPacketHandler struct {
 
 	// 是否启用FR，tlp必须启用FR
 	useFastRetransmit bool
-
-	// tmp count
-	tmpcount protocol.ByteCount
 }
 
 // NewSentPacketHandler creates a new sentPacketHandler
@@ -158,14 +158,15 @@ func NewSentPacketHandler(
 	}
 
 	return &sentPacketHandler{
-		packetHistory:      NewPacketList(),
-		stopWaitingManager: stopWaitingManager{},
-		rttStats:           rttStats,
-		congestion:         congestionControl,
-		onRTOCallback:      onRTOCallback,
-		onPacketLost:       onPacketLost,
-		onPacketReceived:   onPacketAcked,
-		useFastRetransmit:  useFastRetransmit,
+		packetHistory:       NewPacketList(),
+		stopWaitingManager:  stopWaitingManager{},
+		rttStats:            rttStats,
+		congestion:          congestionControl,
+		onRTOCallback:       onRTOCallback,
+		onPacketLost:        onPacketLost,
+		onPacketReceived:    onPacketAcked,
+		useFastRetransmit:   useFastRetransmit,
+		thresholdController: NewThreshController(),
 	}
 }
 
@@ -557,10 +558,13 @@ func (h *sentPacketHandler) detectLostPackets() {
 	// maxRTT是LatestRTT和SmoothedRTT的较大者
 	maxRTT := float64(utils.MaxDuration(h.rttStats.LatestRTT(), h.rttStats.SmoothedRTT()))
 	// 1.25个maxRTT
-	delayUntilLost := time.Duration((1.0 + timeReorderingFraction) * maxRTT)
-	// zhaolee :try
-	// delayUntilLost := time.Duration(8 * maxRTT)
-	// timeReorderingFraction
+
+	timeThreshold := timeReorderingFraction
+	dupThreshod := kReorderingThreshold
+	// timeThreshod := h.thresholdController.getTimeThreshold()
+	// dupThreshod := h.thresholdController.getDupThreshold()
+
+	delayUntilLost := time.Duration((1.0 + timeThreshold) * maxRTT)
 	var lostPackets []*PacketElement
 	// 遍历history
 	for el := h.packetHistory.Front(); el != nil; el = el.Next() {
@@ -574,7 +578,11 @@ func (h *sentPacketHandler) detectLostPackets() {
 		// 数据包传输时间,是time.duration类
 		timeSinceSent := now.Sub(packet.SendTime)
 		// 如果使用快传,且最大被确认数大于3,且当前数据包号小于最大确认数-3;从发送到现在的时间大于1.25个maxRTT
-		if (h.useFastRetransmit && h.LargestAcked >= kReorderingThreshold && packet.PacketNumber <= h.LargestAcked-kReorderingThreshold) || timeSinceSent > delayUntilLost {
+		// if (h.useFastRetransmit && h.LargestAcked >= kReorderingThreshold && packet.PacketNumber <= h.LargestAcked-kReorderingThreshold) || timeSinceSent > delayUntilLost {
+		if (h.useFastRetransmit &&
+			h.LargestAcked >= protocol.PacketNumber(dupThreshod) &&
+			packet.PacketNumber <= h.LargestAcked-protocol.PacketNumber(dupThreshod)) ||
+			timeSinceSent > delayUntilLost {
 			// Update statistics
 			// 标记丢包,当发送时间大于1.25个rtt会被标记为丢包;快传被确认3个包也会
 			h.losses++
