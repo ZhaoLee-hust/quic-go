@@ -307,3 +307,8 @@ func (p *path) onRTO(lastSentTime time.Time) bool {
 func (p *path) SetLeastUnacked(leastUnacked protocol.PacketNumber) {
 	p.leastUnacked = leastUnacked
 }
+
+// added by zhaolee
+func (p *path) ReceiveSymbolAckFrame(symbolAckFrame *wire.SymbolAckFrame) {
+	p.sentPacketHandler.HandleSymbolACKFrame(symbolAckFrame)
+}

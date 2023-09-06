@@ -65,17 +65,23 @@ type FECFrameworkSender struct {
 	// 统计发送的全部Symbol个数
 	numberOfSymbols uint64
 	// 统计被确认的Symbol个数,总数
-	numberOfSymbolsAcked uint64
+	// numberOfSymbolsAcked uint64
 }
 
 var FECFrameworkSenderPacketHandledWithWrongFECGroup = errors.New("FECFrameworkSender: A packet with the wrong FEC Group Number has been added")
 
-func (f *FECFrameworkSender) handleSymbolACKFrame(frame *wire.SymbolAckFrame) {
-	utils.Debugf("Acked Symbol: %d", frame.SymbolReceived)
-	// f.
-	f.numberOfSymbolsAcked = uint64(frame.SymbolReceived)
-	symbolLossRate := float64(f.numberOfSymbols-f.numberOfSymbolsAcked) / float64(f.numberOfSymbols)
-	log.Printf("Dynamic Symbol Sent: %d, ACKed: %d, LossRate: %f", f.numberOfSymbols, f.numberOfSymbolsAcked, symbolLossRate)
+// func (f *FECFrameworkSender) handleSymbolACKFrame(frame *wire.SymbolAckFrame) {
+// 	utils.Debugf("Acked Symbol: %d", frame.SymbolReceived)
+// 	// f.
+// 	f.numberOfSymbolsAcked = uint64(frame.SymbolReceived)
+// 	path := f.sess.paths[protocol.InitialPathID]
+// 	path.ReceiveSymbolAckFrame(frame)
+// 	symbolLossRate := float64(f.numberOfSymbols-f.numberOfSymbolsAcked) / float64(f.numberOfSymbols)
+// 	log.Printf("Dynamic Symbol Sent: %d, ACKed: %d, LossRate: %f", f.numberOfSymbols, f.numberOfSymbolsAcked, symbolLossRate)
+// }
+
+func (f *FECFrameworkSender) GetNumberOfRepairSymbols() uint64 {
+	return f.numberOfSymbols
 }
 
 // TODO define a window size and a spacing

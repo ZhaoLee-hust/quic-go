@@ -1,8 +1,9 @@
 package ackhandler
 
 import (
-	"github.com/lucas-clemente/quic-go/congestion"
 	"time"
+
+	"github.com/lucas-clemente/quic-go/congestion"
 
 	"github.com/lucas-clemente/quic-go/internal/protocol"
 	"github.com/lucas-clemente/quic-go/internal/wire"
@@ -37,6 +38,9 @@ type SentPacketHandler interface {
 	GetBytesInFlight() protocol.ByteCount
 	GetPacketsInFlight() []*Packet
 	GetSendAlgorithm() congestion.SendAlgorithm
+
+	// add by zhaolee
+	ReceiveSymbolAck(*wire.SymbolAckFrame, uint64)
 }
 
 // ReceivedPacketHandler handles ACKs needed to send for incoming packets

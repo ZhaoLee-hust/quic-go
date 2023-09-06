@@ -134,6 +134,8 @@ type sentPacketHandler struct {
 	useFastRetransmit bool
 }
 
+var _ SentPacketHandler = &sentPacketHandler{}
+
 // NewSentPacketHandler creates a new sentPacketHandler
 // 在path中调用
 func NewSentPacketHandler(
@@ -168,6 +170,10 @@ func NewSentPacketHandler(
 		useFastRetransmit:   useFastRetransmit,
 		thresholdController: NewThreshController(),
 	}
+}
+
+func (h *sentPacketHandler) ReceiveSymbolAck(frame *wire.SymbolAckFrame, nNumberOfSymbolsSent uint64) {
+
 }
 
 func (h *sentPacketHandler) GetStatistics() (uint64, uint64, uint64) {

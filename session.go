@@ -820,9 +820,10 @@ func (s *session) handleFrames(fs []wire.Frame, encLevel protocol.EncryptionLeve
 			s.pathsLock.RUnlock()
 		case *wire.SymbolAckFrame:
 			// log.Print("received SymbolAckFrame!")
-			if s.fecFrameworkSender != nil {
-				s.fecFrameworkSender.handleSymbolACKFrame(frame)
-			}
+			// if s.fecFrameworkSender != nil {
+			// 	s.fecFrameworkSender.handleSymbolACKFrame(frame)
+			// }
+			s.handleSymbolACKFrame(frame, p.pathID)
 		default:
 			return errors.New("Session BUG: unexpected frame type")
 		}
@@ -937,6 +938,12 @@ func (s *session) handleAckFrame(frame *wire.AckFrame, encLevel protocol.Encrypt
 		s.rttStats.UpdateSessionRTT(pth.rttStats.SmoothedRTT())
 	}
 	return err
+}
+
+func (s *session) handleSymbolACKFrame(frame *wire.SymbolAckFrame, pid protocol.PathID) {
+	nSymbolsSent := s.fecFrameworkSender.GetNumberOfRepairSymbols()
+	pth := s.paths[pid]
+	pth.sentPacketHandler.ReceiveSymbolAck(frame, nSymbolsSent)
 }
 
 func (s *session) handleRecoveredFrame(frame *wire.RecoveredFrame, pid protocol.PathID, encLevel protocol.EncryptionLevel) error {
