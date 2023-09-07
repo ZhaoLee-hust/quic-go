@@ -1118,12 +1118,13 @@ func (s *session) sendPackedPacket(packet *packedPacket, pth *path) error {
 	// for server
 	if foundFinbitInStreamFrame {
 		symbolSent := s.fecFrameworkSender.numberOfSymbols
-		symbolRcv := s.fecFrameworkSender.numberOfSymbolsAcked
-		if symbolSent > 0 {
-			log.Printf("(session Line 1115:)Number of Symbol have been sent: %d, Acked: %d, lossRate: %f", symbolSent, symbolRcv, 1-float64(symbolRcv)/float64(symbolSent))
-		} else {
-			log.Printf("Stream Frame FinBit Found, No Repair Symbol Sent.")
-		}
+		log.Printf("session Line 1115:)Number of Symbol have been sent: %d", symbolSent)
+		// symbolRcv := s.fecFrameworkSender.numberOfSymbolsAcked
+		// if symbolSent > 0 {
+		// 	log.Printf("(session Line 1115:)Number of Symbol have been sent: %d, Acked: %d, lossRate: %f", symbolSent, symbolRcv, 1-float64(symbolRcv)/float64(symbolSent))
+		// } else {
+		// 	log.Printf("Stream Frame FinBit Found, No Repair Symbol Sent.")
+		// }
 
 	}
 

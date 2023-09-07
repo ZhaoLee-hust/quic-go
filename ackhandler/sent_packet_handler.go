@@ -159,21 +159,25 @@ func NewSentPacketHandler(
 		)
 	}
 
-	return &sentPacketHandler{
-		packetHistory:       NewPacketList(),
-		stopWaitingManager:  stopWaitingManager{},
-		rttStats:            rttStats,
-		congestion:          congestionControl,
-		onRTOCallback:       onRTOCallback,
-		onPacketLost:        onPacketLost,
-		onPacketReceived:    onPacketAcked,
-		useFastRetransmit:   useFastRetransmit,
-		thresholdController: NewThreshController(),
+	handler := &sentPacketHandler{
+		packetHistory:      NewPacketList(),
+		stopWaitingManager: stopWaitingManager{},
+		rttStats:           rttStats,
+		congestion:         congestionControl,
+		onRTOCallback:      onRTOCallback,
+		onPacketLost:       onPacketLost,
+		onPacketReceived:   onPacketAcked,
+		useFastRetransmit:  useFastRetransmit,
+		// thresholdController: NewThreshController(),
 	}
+
+	handler.thresholdController = NewThreshController(handler.GetStatistics, handler.rttStats)
+	return handler
 }
 
 func (h *sentPacketHandler) ReceiveSymbolAck(frame *wire.SymbolAckFrame, nNumberOfSymbolsSent uint64) {
-
+	currentAckedSymbols := frame.SymbolReceived
+	h.thresholdController.updateAckedSymbols(currentAckedSymbols, nNumberOfSymbolsSent)
 }
 
 func (h *sentPacketHandler) GetStatistics() (uint64, uint64, uint64) {
@@ -585,6 +589,17 @@ func (h *sentPacketHandler) detectLostPackets() {
 		timeSinceSent := now.Sub(packet.SendTime)
 		// 如果使用快传,且最大被确认数大于3,且当前数据包号小于最大确认数-3;从发送到现在的时间大于1.25个maxRTT
 		// if (h.useFastRetransmit && h.LargestAcked >= kReorderingThreshold && packet.PacketNumber <= h.LargestAcked-kReorderingThreshold) || timeSinceSent > delayUntilLost {
+		var reason LossTrigger
+		if h.LargestAcked >= protocol.PacketNumber(dupThreshod) && packet.PacketNumber <= h.LargestAcked-protocol.PacketNumber(dupThreshod) {
+			reason = lossByDuplicate
+		}
+		if timeSinceSent > delayUntilLost {
+			reason = lossByDelay
+		}
+		if reason != noLoss {
+			h.thresholdController.OnPacketLostBy(reason)
+		}
+
 		if (h.useFastRetransmit &&
 			h.LargestAcked >= protocol.PacketNumber(dupThreshod) &&
 			packet.PacketNumber <= h.LargestAcked-protocol.PacketNumber(dupThreshod)) ||

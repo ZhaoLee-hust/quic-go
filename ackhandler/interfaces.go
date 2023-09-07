@@ -41,6 +41,7 @@ type SentPacketHandler interface {
 
 	// add by zhaolee
 	ReceiveSymbolAck(*wire.SymbolAckFrame, uint64)
+	// GetNumberOfRepairSymbols() uint64
 }
 
 // ReceivedPacketHandler handles ACKs needed to send for incoming packets
