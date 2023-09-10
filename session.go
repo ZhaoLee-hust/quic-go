@@ -942,6 +942,7 @@ func (s *session) handleAckFrame(frame *wire.AckFrame, encLevel protocol.Encrypt
 
 func (s *session) handleSymbolACKFrame(frame *wire.SymbolAckFrame, pid protocol.PathID) {
 	nSymbolsSent := s.fecFrameworkSender.GetNumberOfRepairSymbols()
+	// log.Printf("handling SymbolACKFrame with current Acked: %d, current Sent: %d", frame.SymbolReceived, nSymbolsSent)
 	pth := s.paths[pid]
 	pth.sentPacketHandler.ReceiveSymbolAck(frame, nSymbolsSent)
 }

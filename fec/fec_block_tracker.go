@@ -52,7 +52,8 @@ func (b *BlockTracker) ReceivedNewFECFrame(frame *wire.FECFrame) {
 		b.ReceivedFrames[frame.FECBlockNumber] = SymbolsInBlock
 	}
 	// log.Printf("BlockNumber: %d, RepairSymbolNumder: %d, SymbolsInThisBlock: %d", frame.FECBlockNumber, frame.RepairSymbolNumber, len(b.ReceivedFrames[frame.FECBlockNumber]))
-	log.Printf("(fec_block_tracker.go:line 55)blockNumber: %d, odd: %d, new: %d", frame.FECBlockNumber, len(SymbolsInBlock), len(b.ReceivedFrames[frame.FECBlockNumber]))
+
+	// log.Printf("(fec_block_tracker.go:line 55)blockNumber: %d, odd: %d, new: %d", frame.FECBlockNumber, len(SymbolsInBlock), len(b.ReceivedFrames[frame.FECBlockNumber]))
 	FramesInSymbol := SymbolsInBlock[frame.RepairSymbolNumber]
 	if _, ok := FramesInSymbol[frame.Offset]; !ok {
 		// 定位Group--定位某个Symbol的--定位到具体的Frame
@@ -63,11 +64,11 @@ func (b *BlockTracker) ReceivedNewFECFrame(frame *wire.FECFrame) {
 	symbol, _, _ := b.UpdateNewlyConfirmedSymbols(frame)
 	if symbol != nil {
 		b.ReceivedSymbol[frame.FECBlockNumber] = append(b.ReceivedSymbol[frame.FECBlockNumber], symbol)
-		// log.Printf("NewSymbol with SymbolNumber: %d", symbol.SymbolNumber)
 	}
 	// 适当删除某个Block,注意是整个block一起删除
 	symbolsForTheBlock := b.ReceivedSymbol[frame.FECBlockNumber]
-	log.Printf("(fec_block_tracker.go:line 70)SymbolsInTheBlock: %d, NumberOfSymbols: %d, SymbolNumber: %d", len(symbolsForTheBlock), symbol.NumberOfRepairSymbols, frame.RepairSymbolNumber)
+
+	// log.Printf("(fec_block_tracker.go:line 70)SymbolsInTheBlock: %d, NumberOfSymbols: %d, SymbolNumber: %d", len(symbolsForTheBlock), symbol.NumberOfRepairSymbols, frame.RepairSymbolNumber)
 	if len(symbolsForTheBlock) >= int(symbol.NumberOfRepairSymbols) {
 		delete(b.ReceivedFrames, frame.FECBlockNumber)
 		b.isExpiredBlocks[frame.FECBlockNumber] = true

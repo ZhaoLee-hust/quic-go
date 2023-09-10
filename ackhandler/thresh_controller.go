@@ -23,7 +23,7 @@ const (
 	ALPHA = 0.5
 	// MD参数
 	DELTA = 0.1
-	Krtt  = 3
+	Krtt  = 4
 )
 
 type LossTrigger uint32
@@ -91,9 +91,13 @@ func (t *ThreshController) getSmothedRTT() time.Duration {
 	return t.rttCallBack.SmoothedRTT()
 }
 
+// var Count int
+
 func (t *ThreshController) updateAckedSymbols(Acked protocol.NumberOfAckedSymbol, nNumberOfSymbolsSent uint64) {
+
 	// 没到时间直接返回
 	sRTT := t.getSmothedRTT()
+
 	if time.Since(t.lastRefreshTime) < Krtt*sRTT {
 		return
 	}
@@ -117,17 +121,48 @@ func (t *ThreshController) onNextPeriod(Acked protocol.NumberOfAckedSymbol, nNum
 	// packet
 	newlyPkt := t.curPacketStatistic.numberOfPackets - t.lastPacketStatistic.numberOfPackets
 	newlyRetrans := t.curPacketStatistic.numberOfRetransmissions - t.lastPacketStatistic.numberOfRetransmissions
+
+	// log.Printf("(TC) newlyLoss: Delay: %d, Dup: %d, total: %d", t.triggers[0], t.triggers[1], t.triggers[0]+t.triggers[1])
+	log.Printf("------------Global (new gap)----------------")
+	log.Printf("Symbol: Acked: %d, Sent: %d", t.lastSymbolStatistic.numberOfSymbolsAcked, t.lastSymbolStatistic.numberOfSymbols)
+	log.Printf("Packet: Retrans: %d, Sent: %d", retrans, pkts)
+	log.Printf("RetransRate: %f, Lossrate: %f", float64(retrans)/float64(pkts), 1-float64(t.lastSymbolStatistic.numberOfSymbolsAcked)/float64(t.lastSymbolStatistic.numberOfSymbols))
+	log.Printf("------------Newly (new gap)-----------------")
+	log.Printf("Symbol: Acked: %d, Sent: %d", newlyAcked, newlySent)
+	log.Printf("Packet: Retrans: %d, Sent: %d", newlyRetrans, newlySent)
+	log.Printf("RetransRate: %f, Lossrate: %f", float64(newlyRetrans)/float64(newlyPkt), 1-float64(newlyAcked)/float64(newlySent))
+	log.Printf("\n")
+
 	// 计算当前时隙的丢包率
-	lossRate := float64(newlySent-newlyAcked) / float64(newlySent)
+	var lossRate float64
+	if newlySent == 0 {
+		lossRate = t.lastSymbolStatistic.lossRate
+	} else {
+		lossRate = float64(newlySent-newlyAcked) / float64(newlySent)
+	}
+
 	// 重传率
-	retransRate := float64(newlyRetrans) / float64(newlyPkt)
+	var retransRate float64
+	if newlyPkt == 0 {
+		retransRate = t.lastPacketStatistic.retransRate
+	} else {
+		retransRate = float64(newlyRetrans) / float64(newlyPkt)
+
+	}
+
+	// log.Printf("newly LossRate: %f, newly Retrans: %f", lossRate, retransRate)
 
 	// 更新统计模块
 	t.curSymbolStatistic.lossRate = lossRate
-	t.curPacketStatistic.retransRate = retransRate
-
 	t.lastSymbolStatistic = t.curSymbolStatistic
 	t.curSymbolStatistic = newSymbolStatistic()
+
+	t.curPacketStatistic.retransRate = retransRate
+	t.lastPacketStatistic = t.curPacketStatistic
+	t.curPacketStatistic = newPacketStatistic()
+
+	// 更新时间
+	t.lastRefreshTime = time.Now()
 
 	t.refreshThreshold()
 }
