@@ -129,6 +129,8 @@ type sentPacketHandler struct {
 	retransmissions uint64
 	// 丢失个数
 	losses uint64
+	// 确认的symbol数量
+	ackedSymbol uint64
 
 	// 是否启用FR，tlp必须启用FR
 	useFastRetransmit bool
@@ -177,7 +179,16 @@ func NewSentPacketHandler(
 
 func (h *sentPacketHandler) ReceiveSymbolAck(frame *wire.SymbolAckFrame, nNumberOfSymbolsSent uint64) {
 	currentAckedSymbols := frame.SymbolReceived
+	h.ackedSymbol = uint64(currentAckedSymbols)
 	h.thresholdController.updateAckedSymbols(currentAckedSymbols, nNumberOfSymbolsSent)
+}
+
+func (h *sentPacketHandler) GetAckedSymbols() uint64 {
+	return h.ackedSymbol
+}
+
+func (h *sentPacketHandler) GetthresholdStatistic() ([]map[uint64][2]float64, []map[uint64][2]uint64) {
+	return h.thresholdController.thresholdStatistic, h.thresholdController.symbolsStatistic
 }
 
 func (h *sentPacketHandler) GetStatistics() (uint64, uint64, uint64) {
@@ -568,11 +579,13 @@ func (h *sentPacketHandler) detectLostPackets() {
 	// maxRTT是LatestRTT和SmoothedRTT的较大者
 	maxRTT := float64(utils.MaxDuration(h.rttStats.LatestRTT(), h.rttStats.SmoothedRTT()))
 	// 1.25个maxRTT
-
+	useConrol := false
 	timeThreshold := timeReorderingFraction
 	dupThreshod := kReorderingThreshold
-	// timeThreshod := h.thresholdController.getTimeThreshold()
-	// dupThreshod := h.thresholdController.getDupThreshold()
+	if useConrol {
+		timeThreshold = h.thresholdController.getTimeThreshold()
+		dupThreshod = h.thresholdController.getDupThreshold()
+	}
 
 	delayUntilLost := time.Duration((1.0 + timeThreshold) * maxRTT)
 	var lostPackets []*PacketElement

@@ -25,7 +25,7 @@ import (
 
 var fs quic.FECSchemeID
 var NUMBER_OF_SOURCE_SYMBOLS uint = 15
-var NUMBER_OF_REPAIR_SYMBOLS uint = 3
+var NUMBER_OF_REPAIR_SYMBOLS uint = 6
 var NUMBER_OF_INTERLEAVED_BLOCKS uint = 1
 var DISABLE_RECOVERED_FRAMES bool = false
 

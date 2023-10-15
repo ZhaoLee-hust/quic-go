@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 
 	"github.com/lucas-clemente/quic-go/ackhandler"
 	"github.com/lucas-clemente/quic-go/internal/handshake"
@@ -419,7 +419,15 @@ func (p *packetPacker) composeNextPacket(
 				// utils.Infof("Stream Frame Transmission Completed, time=%v", time.Now())
 				m := pth.rttStats.Windows
 				mjson, _ := json.Marshal(m)
-				_ = ioutil.WriteFile(fmt.Sprintf("./%s_%d.json", protocol.FILE_CONTAINING_CWIN, pth.pathID), mjson, 0644)
+				// _ = ioutil.WriteFile(fmt.Sprintf("./%s_%d.json", protocol.FILE_CONTAINING_CWIN, pth.pathID), mjson, 0644)
+				_ = os.WriteFile(fmt.Sprintf("./%s_%d.json", protocol.FILE_CONTAINING_CWIN, pth.pathID), mjson, 0644)
+
+				threshold, symbols := pth.sentPacketHandler.GetthresholdStatistic()
+				mjson, _ = json.Marshal(threshold)
+				_ = os.WriteFile("threshold.json", mjson, 0644)
+
+				mjson, _ = json.Marshal(symbols)
+				_ = os.WriteFile("symbols.json", mjson, 0644)
 			}
 		}
 

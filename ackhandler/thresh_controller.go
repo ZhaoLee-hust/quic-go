@@ -1,7 +1,6 @@
 package ackhandler
 
 import (
-	"log"
 	"time"
 
 	"github.com/lucas-clemente/quic-go/congestion"
@@ -9,46 +8,54 @@ import (
 )
 
 const (
-	DEFAULT_TIME_THRESH = 9 / 8
+	// 初始阈值
+	DEFAULT_TIME_THRESH = 9.0 / 8.0
 	DEFAULT_DUP_THRESH  = 3
-)
-
-const (
+	// 时间阈值最值
 	MAX_TIME_THRESH = 5
-	MAX_DUP_THRESH  = 10
-)
-
-const (
-	// 平滑滤波参数
+	MIN_TIME_THRESH = 9.0 / 8.0
+	// 数量阈值最值
+	MAX_DUP_THRESH = 10
+	MIN_DUP_THRESH = 3
+	// 平滑滤波默认参数
 	ALPHA = 0.5
 	// MD参数
 	DELTA = 0.1
-	Krtt  = 4
+	Krtt  = 6
 )
 
 type LossTrigger uint32
 
-var noLoss LossTrigger = 0
-var lossByDuplicate LossTrigger = 1
-var lossByDelay LossTrigger = 2
+const (
+	noLoss          LossTrigger = 0
+	lossByDuplicate LossTrigger = 1
+	lossByDelay     LossTrigger = 2
+)
+
+type pktStatistic struct {
+	Sent        uint64
+	Retrans     uint64
+	retransRate float64
+}
+
+type symbolStatistic struct {
+	Sent     uint64
+	Acked    uint64
+	lossRate float64
+}
 
 type ThreshController struct {
 	// 定义时间阈值和数量阈值
 	timeThreshold float32
 	dupThreshold  uint
 
-	// 超参数
-	args *ThresholdArgs
-
 	// 触发原因统计,0:lossByDelay,1:lossByDuplicate
 	triggers [2]int
 
 	// symbol的统计参数
-	lastSymbolStatistic *SymbolStatistic
-	curSymbolStatistic  *SymbolStatistic
+	symbolStatistic *symbolStatistic
 	// packet的统计参数
-	lastPacketStatistic *PacketStatistic
-	curPacketStatistic  *PacketStatistic
+	packetStatistic *pktStatistic
 
 	//时间周期
 	lastRefreshTime time.Time
@@ -57,41 +64,46 @@ type ThreshController struct {
 	// h.packets, h.retransmissions, h.losses
 	pktCallBacK func() (uint64, uint64, uint64)
 	rttCallBack *congestion.RTTStats
+
+	// 时隙编号
+	epochIndex uint64
+
+	// 过去5个时隙
+	pastTotalPackets   []uint64 // 过去时隙的数据包总数
+	pastRetransPackets []uint64 // 过去时隙的重传数据包数
+	pastTotalSymbols   []uint64
+	pastAckedSymbols   []uint64
+
+	// 统计函数
+	thresholdStatistic []map[uint64][2]float64
+	symbolsStatistic   []map[uint64][2]uint64
 }
 
 func NewThreshController(pktcallback func() (uint64, uint64, uint64), rttCallBack *congestion.RTTStats) *ThreshController {
-	args := &ThresholdArgs{
-		MinTimeThresh: DEFAULT_TIME_THRESH,
-		MinDupThresh:  DEFAULT_DUP_THRESH,
-		MaxTimeThresh: MAX_TIME_THRESH,
-		MaxDupThresh:  MAX_DUP_THRESH,
-	}
 
 	return &ThreshController{
 		// 阈值
 		timeThreshold: DEFAULT_TIME_THRESH,
 		dupThreshold:  DEFAULT_DUP_THRESH,
-		// 超参数
-		args: args,
 		// 间隔
 		lastRefreshTime: time.Now(),
 		// symbol统计
-		lastSymbolStatistic: newSymbolStatistic(),
-		curSymbolStatistic:  newSymbolStatistic(),
+		symbolStatistic: &symbolStatistic{},
 		// packet统计
-		lastPacketStatistic: newPacketStatistic(),
-		curPacketStatistic:  newPacketStatistic(),
+		packetStatistic: &pktStatistic{},
 
 		// 回调函数
+		// h.packets, h.retransmissions, h.losses
 		pktCallBacK: pktcallback,
 		rttCallBack: rttCallBack,
+
+		//
+		epochIndex: 1,
 	}
 }
 func (t *ThreshController) getSmothedRTT() time.Duration {
 	return t.rttCallBack.SmoothedRTT()
 }
-
-// var Count int
 
 func (t *ThreshController) updateAckedSymbols(Acked protocol.NumberOfAckedSymbol, nNumberOfSymbolsSent uint64) {
 
@@ -105,76 +117,111 @@ func (t *ThreshController) updateAckedSymbols(Acked protocol.NumberOfAckedSymbol
 	t.onNextPeriod(Acked, nNumberOfSymbolsSent)
 }
 
-func (t *ThreshController) onNextPeriod(Acked protocol.NumberOfAckedSymbol, nNumberOfSymbolsSent uint64) {
-	// 更新当前时间的Symbol信息
-	t.curSymbolStatistic.numberOfSymbolsAcked = uint64(Acked)
-	t.curSymbolStatistic.numberOfSymbols = nNumberOfSymbolsSent
-	// 更新pkt信息
-	pkts, retrans, _ := t.pktCallBacK()
-	t.curPacketStatistic.numberOfPackets = pkts
-	t.curPacketStatistic.numberOfRetransmissions = retrans
-
-	// 计算当前gap的差值
-	// symbol
-	newlySent := t.curSymbolStatistic.numberOfSymbols - t.lastSymbolStatistic.numberOfSymbolsAcked
-	newlyAcked := t.curSymbolStatistic.numberOfSymbolsAcked - t.lastSymbolStatistic.numberOfSymbolsAcked
-	// packet
-	newlyPkt := t.curPacketStatistic.numberOfPackets - t.lastPacketStatistic.numberOfPackets
-	newlyRetrans := t.curPacketStatistic.numberOfRetransmissions - t.lastPacketStatistic.numberOfRetransmissions
-
-	// log.Printf("(TC) newlyLoss: Delay: %d, Dup: %d, total: %d", t.triggers[0], t.triggers[1], t.triggers[0]+t.triggers[1])
-	log.Printf("------------Global (new gap)----------------")
-	log.Printf("Symbol: Acked: %d, Sent: %d", t.lastSymbolStatistic.numberOfSymbolsAcked, t.lastSymbolStatistic.numberOfSymbols)
-	log.Printf("Packet: Retrans: %d, Sent: %d", retrans, pkts)
-	log.Printf("RetransRate: %f, Lossrate: %f", float64(retrans)/float64(pkts), 1-float64(t.lastSymbolStatistic.numberOfSymbolsAcked)/float64(t.lastSymbolStatistic.numberOfSymbols))
-	log.Printf("------------Newly (new gap)-----------------")
-	log.Printf("Symbol: Acked: %d, Sent: %d", newlyAcked, newlySent)
-	log.Printf("Packet: Retrans: %d, Sent: %d", newlyRetrans, newlySent)
-	log.Printf("RetransRate: %f, Lossrate: %f", float64(newlyRetrans)/float64(newlyPkt), 1-float64(newlyAcked)/float64(newlySent))
-	log.Printf("\n")
-
-	// 计算当前时隙的丢包率
-	var lossRate float64
-	if newlySent == 0 {
-		lossRate = t.lastSymbolStatistic.lossRate
-	} else {
-		lossRate = float64(newlySent-newlyAcked) / float64(newlySent)
+func (t *ThreshController) computePastRates() (float64, float64) {
+	if len(t.pastTotalPackets) < 5 || len(t.pastAckedSymbols) < 5 {
+		return -1, -1 // 表示无法计算
 	}
 
-	// 重传率
-	var retransRate float64
-	if newlyPkt == 0 {
-		retransRate = t.lastPacketStatistic.retransRate
-	} else {
-		retransRate = float64(newlyRetrans) / float64(newlyPkt)
+	pastTotalPackets := t.pastTotalPackets[len(t.pastTotalPackets)-5] - t.pastTotalPackets[len(t.pastTotalPackets)-1]
+	pastRetransPackets := t.pastRetransPackets[len(t.pastRetransPackets)-5] - t.pastRetransPackets[len(t.pastRetransPackets)-1]
+	pastTotalSymbols := t.pastTotalSymbols[len(t.pastTotalSymbols)-5] - t.pastTotalSymbols[len(t.pastTotalSymbols)-1]
+	pastAckedSymbols := t.pastAckedSymbols[len(t.pastAckedSymbols)-5] - t.pastAckedSymbols[len(t.pastAckedSymbols)-1]
 
-	}
+	pastLossRate := 1.0 - float64(pastAckedSymbols)/float64(pastTotalSymbols)
+	pastRetransRate := float64(pastRetransPackets) / float64(pastTotalPackets)
 
-	// log.Printf("newly LossRate: %f, newly Retrans: %f", lossRate, retransRate)
-
-	// 更新统计模块
-	t.curSymbolStatistic.lossRate = lossRate
-	t.lastSymbolStatistic = t.curSymbolStatistic
-	t.curSymbolStatistic = newSymbolStatistic()
-
-	t.curPacketStatistic.retransRate = retransRate
-	t.lastPacketStatistic = t.curPacketStatistic
-	t.curPacketStatistic = newPacketStatistic()
-
-	// 更新时间
-	t.lastRefreshTime = time.Now()
-
-	t.refreshThreshold()
+	return pastLossRate, pastRetransRate
 }
 
-func (t *ThreshController) refreshThreshold() {
-	// log.Println("byDelay,ByDup:", t.triggers[0], t.triggers[1])
-	// from last
-	retransRate := t.lastPacketStatistic.retransRate
-	lossRate := t.lastSymbolStatistic.lossRate
+func (t *ThreshController) onNextPeriod(Acked protocol.NumberOfAckedSymbol, nNumberOfSymbolsSent uint64) {
+
+	// 获取参数
+	nPackets, nRetrans, _ := t.pktCallBacK()
+	globalRetransRate := float64(nRetrans) / float64(nPackets)
+
+	// 更新过去的数据包总数和重传数据包数，存总数
+	t.pastTotalPackets = append(t.pastTotalPackets, nPackets)
+	t.pastRetransPackets = append(t.pastRetransPackets, nRetrans)
+
+	if len(t.pastTotalPackets) > 5 {
+		t.pastTotalPackets = t.pastTotalPackets[1:]
+	}
+	if len(t.pastRetransPackets) > 5 {
+		t.pastRetransPackets = t.pastRetransPackets[1:]
+	}
+	// 更新冗余数据包数量，存的是总数
+	t.pastAckedSymbols = append(t.pastAckedSymbols, uint64(Acked))
+	t.pastTotalSymbols = append(t.pastTotalSymbols, nNumberOfSymbolsSent)
+	if len(t.pastAckedSymbols) > 5 {
+		t.pastAckedSymbols = t.pastAckedSymbols[1:]
+	}
+	if len(t.pastTotalSymbols) > 5 {
+		t.pastTotalSymbols = t.pastTotalSymbols[1:]
+	}
+
+	pastLossRate, pastRetransRate := t.computePastRates()
+
+	var lossRate, reTransRate float64
+	globalLossRate := 1 - float64(Acked)/float64(nNumberOfSymbolsSent)
+
+	if pastLossRate == -1 || pastRetransRate == -1 {
+		return
+	}
+
+	lossRate = 0.5*globalLossRate + 0.5*pastLossRate
+	reTransRate = 0.5*globalRetransRate + 0.5*pastRetransRate
+
+	t.refreshThreshold(lossRate, reTransRate)
+
+	t.packetStatistic.Retrans = nRetrans
+	t.packetStatistic.Sent = nPackets
+	t.packetStatistic.retransRate = globalRetransRate
+
+	t.symbolStatistic.Acked = uint64(Acked)
+	t.symbolStatistic.Sent = nNumberOfSymbolsSent
+	t.symbolStatistic.lossRate = globalLossRate
+
+	// 更新
+	t.symbolsStatistic = append(t.symbolsStatistic, map[uint64][2]uint64{t.epochIndex: {t.symbolStatistic.Acked, t.symbolStatistic.Sent}})
+	t.lastRefreshTime = time.Now()
+	t.epochIndex++
+
+}
+
+// // 计算当前时隙的权重
+// NSentPktAvg := t.packetStatistic.Sent / t.epochIndex
+// w1 := 0.5 / (1.0 + math.Exp(-float64(deltaSentPkt-NSentPktAvg)))
+// // w1 = 0
+// reTransRate := w1*curRetransRate + (1.0-w1)*t.packetStatistic.retransRate
+
+// // 更新当前时间的Symbol丢失信息
+// deltaSentSymbol := nNumberOfSymbolsSent - t.symbolStatistic.Sent
+// deltaAckedSymbol := uint64(Acked) - t.symbolStatistic.Acked
+// curLossRate := 1.0 - float64(deltaAckedSymbol)/float64(deltaSentSymbol)
+// // 计算当前时隙的权重
+// NSentSymbolAvg := t.symbolStatistic.Sent / t.epochIndex
+// w2 := 0.5 / (1.0 + math.Exp(-float64(deltaSentSymbol-NSentSymbolAvg)))
+// // w2 = 0
+// lossRate := w2*curLossRate + (1.0-w2)*t.symbolStatistic.lossRate
+
+// log
+// log.Printf("(TC) newlyLoss: Delay: %d, Dup: %d, total: %d", t.triggers[0], t.triggers[1], t.triggers[0]+t.triggers[1])
+// log.Printf("------------Global (new gap)----------------")
+// log.Printf("Symbol: Acked: %d, Sent: %d", Acked, nNumberOfSymbolsSent)
+// log.Printf("Packet: Retrans: %d, Sent: %d", nRetrans, nPackets)
+// log.Printf("RetransRate: %f, Lossrate: %f", float64(nRetrans)/float64(nPackets), 1.0-float64(Acked)/float64(nNumberOfSymbolsSent))
+// log.Printf("------------Newly (new gap)-----------------")
+// log.Printf("Symbol: Acked: %d, Sent: %d", deltaAckedSymbol, deltaSentSymbol)
+// log.Printf("Packet: Retrans: %d, Sent: %d", deltaRetransPkt, deltaSentPkt)
+// log.Printf("RetransRate: %f, Lossrate: %f", float64(deltaRetransPkt)/float64(deltaSentPkt), 1-float64(deltaAckedSymbol)/float64(deltaSentSymbol))
+// log.Printf("weighted lossRate: %f, reTransRate: %f", lossRate, reTransRate)
+// log.Println("Threshold Updated: ", t.timeThreshold, t.dupThreshold)
+// log.Printf("\n")
+
+func (t *ThreshController) refreshThreshold(loss, retrans float64) {
 
 	// 重传率较低，应该降低阈值, mutiple decrease
-	if retransRate <= lossRate {
+	if retrans <= loss {
 		t.dupThreshold = t.dupThreshold / 2
 		t.timeThreshold = t.timeThreshold * (1 - DELTA)
 
@@ -195,15 +242,14 @@ func (t *ThreshController) refreshThreshold() {
 		t.triggers = [2]int{}
 	}
 	// 限制范围
-	t.dupThreshold = min(t.args.MaxDupThresh, max(t.dupThreshold, t.args.MinDupThresh))
-	t.timeThreshold = min(t.args.MaxTimeThresh, max(t.timeThreshold, t.args.MinTimeThresh))
+	t.dupThreshold = min(MAX_DUP_THRESH, max(t.dupThreshold, MIN_DUP_THRESH))
+	t.timeThreshold = min(MAX_TIME_THRESH, max(t.timeThreshold, MIN_TIME_THRESH))
+	t.thresholdStatistic = append(t.thresholdStatistic, map[uint64][2]float64{t.epochIndex: {float64(t.timeThreshold), float64(t.dupThreshold)}})
 
-	// log.Printf("Refresh Threshold:%d(dup),%f(delay).", t.dupThreshold, t.timeThreshold)
-	// log.Printf("Retransmit and LossRate: %f(re), %f(lo)", lossRate, retransRate)
 }
 
 func (t *ThreshController) OnPacketLostBy(reason LossTrigger) {
-	log.Println("Loss Triggered")
+	// log.Println("Loss Triggered")
 	if reason == lossByDelay {
 		t.triggers[0]++
 	}
@@ -212,53 +258,13 @@ func (t *ThreshController) OnPacketLostBy(reason LossTrigger) {
 	}
 }
 
-func (t *ThreshController) getDupThreshold() uint {
-	return t.dupThreshold
+func (t *ThreshController) getDupThreshold() int {
+	return int(t.dupThreshold)
 
 }
 
-func (t *ThreshController) getTimeThreshold() float32 {
-	return t.timeThreshold
-}
-
-func (t *ThreshController) setMaxTimeThreshold(timeThresh float32) {
-	t.args.MaxTimeThresh = timeThresh
-}
-func (t *ThreshController) setMaxDupThreshold(n uint) {
-	t.args.MaxDupThresh = n
-}
-
-type SymbolStatistic struct {
-	numberOfSymbols      uint64
-	numberOfSymbolsAcked uint64
-	lossRate             float64
-}
-
-func newSymbolStatistic() *SymbolStatistic {
-	return &SymbolStatistic{
-		numberOfSymbols:      0,
-		numberOfSymbolsAcked: 0,
-		lossRate:             0,
-	}
-}
-
-type ThresholdArgs struct {
-	MinTimeThresh, MaxTimeThresh float32
-	MinDupThresh, MaxDupThresh   uint
-}
-
-type PacketStatistic struct {
-	numberOfPackets         uint64
-	numberOfRetransmissions uint64
-	retransRate             float64
-}
-
-func newPacketStatistic() *PacketStatistic {
-	return &PacketStatistic{
-		numberOfPackets:         0,
-		numberOfRetransmissions: 0,
-		retransRate:             0,
-	}
+func (t *ThreshController) getTimeThreshold() float64 {
+	return float64(t.timeThreshold)
 }
 
 func min[T float32 | uint](i, j T) T {
