@@ -83,7 +83,8 @@ func (p *path) setup(oliaSenders map[protocol.PathID]*congestion.OliaSender, red
 	p.rttStats = &congestion.RTTStats{}
 
 	var cong congestion.SendAlgorithm
-
+	// true true false
+	// log.Printf("p.sess.GetVersion() >= protocol.VersionMP, %d, %d", p.sess.GetVersion(), protocol.VersionMP)
 	if p.sess.GetVersion() >= protocol.VersionMP && oliaSenders != nil && p.pathID != protocol.InitialPathID {
 		cong = congestion.NewOliaSender(oliaSenders, p.rttStats, protocol.InitialCongestionWindow, protocol.DefaultMaxCongestionWindow)
 		oliaSenders[p.pathID] = cong.(*congestion.OliaSender)

@@ -43,7 +43,7 @@ type SentPacketHandler interface {
 	ReceiveSymbolAck(*wire.SymbolAckFrame, uint64)
 	// GetNumberOfRepairSymbols() uint64
 	GetAckedSymbols() uint64
-	GetthresholdStatistic() ([]map[uint64][2]float64, []map[uint64][2]uint64)
+	GetthresholdStatistic() ([]map[uint64][2]float64, []map[uint64][2]uint64, []map[uint64][2]uint64)
 }
 
 // ReceivedPacketHandler handles ACKs needed to send for incoming packets

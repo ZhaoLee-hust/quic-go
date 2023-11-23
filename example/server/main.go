@@ -20,7 +20,7 @@ var certPath string
 
 var fs quic.FECSchemeID
 var NUMBER_OF_SOURCE_SYMBOLS uint = 15 //number of source symbol
-var NUMBER_OF_REPAIR_SYMBOLS uint = 6  //number of repair symbol
+var NUMBER_OF_REPAIR_SYMBOLS uint = 3  //number of repair symbol
 
 // changed from (20,10) to (10,3)
 var NUMBER_OF_INTERLEAVED_BLOCKS uint = 1 //interlearved blocks, used in RLC

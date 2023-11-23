@@ -148,7 +148,8 @@ func NewSentPacketHandler(
 	onPacketAcked func(protocol.PacketNumber),
 	useFastRetransmit bool) SentPacketHandler {
 	var congestionControl congestion.SendAlgorithm
-
+	// conn==nil
+	// log.Println("cong != nil", cong != nil)
 	if cong != nil {
 		congestionControl = cong
 	} else {
@@ -187,8 +188,8 @@ func (h *sentPacketHandler) GetAckedSymbols() uint64 {
 	return h.ackedSymbol
 }
 
-func (h *sentPacketHandler) GetthresholdStatistic() ([]map[uint64][2]float64, []map[uint64][2]uint64) {
-	return h.thresholdController.thresholdStatistic, h.thresholdController.symbolsStatistic
+func (h *sentPacketHandler) GetthresholdStatistic() ([]map[uint64][2]float64, []map[uint64][2]uint64, []map[uint64][2]uint64) {
+	return h.thresholdController.thresholdStatistic, h.thresholdController.symbolsStatistic, h.thresholdController.pktStatistic
 }
 
 func (h *sentPacketHandler) GetStatistics() (uint64, uint64, uint64) {
@@ -579,7 +580,7 @@ func (h *sentPacketHandler) detectLostPackets() {
 	// maxRTT是LatestRTT和SmoothedRTT的较大者
 	maxRTT := float64(utils.MaxDuration(h.rttStats.LatestRTT(), h.rttStats.SmoothedRTT()))
 	// 1.25个maxRTT
-	useConrol := false
+	useConrol := true
 	timeThreshold := timeReorderingFraction
 	dupThreshod := kReorderingThreshold
 	if useConrol {
@@ -612,7 +613,7 @@ func (h *sentPacketHandler) detectLostPackets() {
 		if reason != noLoss {
 			h.thresholdController.OnPacketLostBy(reason)
 		}
-
+		// RACK是默认启用，FACK是可选的，FACK在乱序的时候有很大影响
 		if (h.useFastRetransmit &&
 			h.LargestAcked >= protocol.PacketNumber(dupThreshod) &&
 			packet.PacketNumber <= h.LargestAcked-protocol.PacketNumber(dupThreshod)) ||

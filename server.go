@@ -310,7 +310,10 @@ func (s *server) handlePacket(rcvRawPacket *receivedRawPacket) error {
 	s.sessionsMutex.RLock()
 	session, sessionKnown := s.sessions[connID]
 	s.sessionsMutex.RUnlock()
-
+	// 第一次的时候，sessionknow是false，session是nil
+	// 后面运行的时候，sessionknow是true，session不是nil
+	// 也就是第一次不知道session应该是什么，因为还没有建立sesison
+	// log.Println("sessionKnown && session == nil", sessionKnown, session == nil)
 	if sessionKnown && session == nil {
 		// Late packet for closed session
 		return nil

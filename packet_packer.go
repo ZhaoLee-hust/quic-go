@@ -422,12 +422,15 @@ func (p *packetPacker) composeNextPacket(
 				// _ = ioutil.WriteFile(fmt.Sprintf("./%s_%d.json", protocol.FILE_CONTAINING_CWIN, pth.pathID), mjson, 0644)
 				_ = os.WriteFile(fmt.Sprintf("./%s_%d.json", protocol.FILE_CONTAINING_CWIN, pth.pathID), mjson, 0644)
 
-				threshold, symbols := pth.sentPacketHandler.GetthresholdStatistic()
+				threshold, symbols, pkts := pth.sentPacketHandler.GetthresholdStatistic()
 				mjson, _ = json.Marshal(threshold)
 				_ = os.WriteFile("threshold.json", mjson, 0644)
 
 				mjson, _ = json.Marshal(symbols)
 				_ = os.WriteFile("symbols.json", mjson, 0644)
+
+				mjson, _ = json.Marshal(pkts)
+				_ = os.WriteFile("packets.json", mjson, 0644)
 			}
 		}
 

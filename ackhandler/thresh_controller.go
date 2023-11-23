@@ -78,6 +78,7 @@ type ThreshController struct {
 	// 统计函数
 	thresholdStatistic []map[uint64][2]float64
 	symbolsStatistic   []map[uint64][2]uint64
+	pktStatistic       []map[uint64][2]uint64
 }
 
 func NewThreshController(pktcallback func() (uint64, uint64, uint64), rttCallBack *congestion.RTTStats) *ThreshController {
@@ -129,7 +130,7 @@ func (t *ThreshController) computePastRates() (float64, float64) {
 	pastTotalSymbols := t.pastTotalSymbols[len(t.pastTotalSymbols)-1] - t.pastTotalSymbols[len(t.pastTotalSymbols)-5]
 	pastAckedSymbols := t.pastAckedSymbols[len(t.pastAckedSymbols)-1] - t.pastAckedSymbols[len(t.pastAckedSymbols)-5]
 	pastLossRate := 1.0 - float64(pastAckedSymbols)/float64(pastTotalSymbols)
-
+	log.Printf("NewRts %d, NewPkts %d, NewAckedSymbols %d, NewSymbols %d", pastRetransPackets, pastTotalPackets, pastAckedSymbols, pastTotalSymbols)
 	return pastLossRate, pastRetransRate
 }
 
@@ -137,17 +138,17 @@ func (t *ThreshController) onNextPeriod(Acked protocol.NumberOfAckedSymbol, nNum
 
 	// 获取参数
 	var globalLossRate, globalRetransRate float64
-	nPackets, nRetrans, _ := t.pktCallBacK()
+	nPackets, nRetrans, nLosses := t.pktCallBacK()
 	globalRetransRate = float64(nRetrans) / float64(nPackets)
 
 	pastLossRate, pastRetransRate := t.computePastRates()
 	var lossRate, reTransRate float64
 	if pastLossRate != -1 && pastRetransRate != -1 {
 		globalLossRate = 1 - float64(Acked)/float64(nNumberOfSymbolsSent)
-		lossRate = 0.75*globalLossRate + 0.25*pastLossRate
-		reTransRate = 0.75*globalRetransRate + 0.25*pastRetransRate
+		lossRate = 0.9*globalLossRate + 0.1*pastLossRate
+		reTransRate = 0.9*globalRetransRate + 0.1*pastRetransRate
 	}
-	log.Printf("(TC) newlyLoss: Delay: %d, Dup: %d, total: %d", t.triggers[0], t.triggers[1], t.triggers[0]+t.triggers[1])
+	// log.Printf("(TC) newlyLoss: Delay: %d, Dup: %d, total: %d", t.triggers[0], t.triggers[1], t.triggers[0]+t.triggers[1])
 	t.refreshThreshold(lossRate, reTransRate)
 
 	t.packetStatistic.Retrans = nRetrans
@@ -179,6 +180,7 @@ func (t *ThreshController) onNextPeriod(Acked protocol.NumberOfAckedSymbol, nNum
 
 	// 更新
 	t.symbolsStatistic = append(t.symbolsStatistic, map[uint64][2]uint64{t.epochIndex: {t.symbolStatistic.Acked, t.symbolStatistic.Sent}})
+	t.pktStatistic = append(t.pktStatistic, map[uint64][2]uint64{t.epochIndex: {nLosses, nPackets}})
 	t.lastRefreshTime = time.Now()
 	t.epochIndex++
 
@@ -229,8 +231,10 @@ func (t *ThreshController) refreshThreshold(loss, retrans float64) {
 		t.triggers = [2]int{}
 	}
 	// 限制范围
-	t.dupThreshold = min(MAX_DUP_THRESH, max(t.dupThreshold, MIN_DUP_THRESH))
-	t.timeThreshold = min(MAX_TIME_THRESH, max(t.timeThreshold, MIN_TIME_THRESH))
+	// t.dupThreshold = min(MAX_DUP_THRESH, max(t.dupThreshold, MIN_DUP_THRESH))
+	t.dupThreshold = max(t.dupThreshold, MIN_DUP_THRESH)
+	// t.timeThreshold = min(MAX_TIME_THRESH, max(t.timeThreshold, MIN_TIME_THRESH))
+	t.timeThreshold = max(t.timeThreshold, MIN_TIME_THRESH)
 	t.thresholdStatistic = append(t.thresholdStatistic, map[uint64][2]float64{t.epochIndex: {float64(t.timeThreshold), float64(t.dupThreshold)}})
 
 }

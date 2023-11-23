@@ -306,7 +306,7 @@ func (s *session) setup(
 		s.redundancyController = s.config.RedundancyController
 		// log.Printf("have rc")
 	}
-
+	// log.Println("pconnMgr == nil && conn != nil ", pconnMgr == nil, conn != nil)
 	if pconnMgr == nil && conn != nil {
 		// XXX ONLY VALID FOR BENCHMARK!
 		s.paths[protocol.InitialPathID] = &path{
