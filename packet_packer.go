@@ -431,6 +431,8 @@ func (p *packetPacker) composeNextPacket(
 
 				mjson, _ = json.Marshal(pkts)
 				_ = os.WriteFile("packets.json", mjson, 0644)
+
+				// log.Println("number of frames: ", p.sess.ACKFrames)
 			}
 		}
 

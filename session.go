@@ -3,10 +3,12 @@ package quic
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -175,6 +177,9 @@ type session struct {
 	ReceivedFECFrames                 []*wire.FECFrame //Received FEC frames not already handled
 	nRetransmissions                  uint64
 	bulkRecovery                      bool
+
+	// zhaolee
+	ACKFrames int
 }
 
 // session结构体实现了Session的方法以及sessionI的方法。
@@ -889,6 +894,13 @@ func (s *session) handleStreamFrame(frame *wire.StreamFrame) error {
 			log.Printf("Number of recovered packets in all: %d", fec.NumberofRecoveredPacket)
 			// utils.Infof("Redundancycontroller: D:%d,R:%d", s.redundancyController.GetNumberOfDataSymbols(), s.redundancyController.GetNumberOfRepairSymbols())
 			// utils.Infof("Redundancycontroller: D:%d,R:%d", s.fecFrameworkSender.redundancyController.GetNumberOfDataSymbols(), s.fecFrameworkSender.redundancyController.GetNumberOfRepairSymbols())
+
+			// add by zhaolee
+			mjson, _ := json.Marshal(pth.dTimeLogger)
+			_ = os.WriteFile("dRcvPacketTime.json", mjson, 0666)
+
+			mjson, _ = json.Marshal(pth.rcvPacketsHistory)
+			os.WriteFile("rcvPacketsHistory.json", mjson, 0666)
 		}
 		symbolSent := s.fecFrameworkSender.numberOfSymbols
 		symbolRcv := s.fecFrameworkReceiver.blockTracker.CountReceivedSymbol()
@@ -945,6 +957,7 @@ func (s *session) handleSymbolACKFrame(frame *wire.SymbolAckFrame, pid protocol.
 	// log.Printf("handling SymbolACKFrame with current Acked: %d, current Sent: %d", frame.SymbolReceived, nSymbolsSent)
 	pth := s.paths[pid]
 	pth.sentPacketHandler.ReceiveSymbolAck(frame, nSymbolsSent)
+	s.ACKFrames++
 }
 
 func (s *session) handleRecoveredFrame(frame *wire.RecoveredFrame, pid protocol.PathID, encLevel protocol.EncryptionLevel) error {

@@ -580,7 +580,7 @@ func (h *sentPacketHandler) detectLostPackets() {
 	// maxRTT是LatestRTT和SmoothedRTT的较大者
 	maxRTT := float64(utils.MaxDuration(h.rttStats.LatestRTT(), h.rttStats.SmoothedRTT()))
 	// 1.25个maxRTT
-	useConrol := true
+	useConrol := false
 	timeThreshold := timeReorderingFraction
 	dupThreshod := kReorderingThreshold
 	if useConrol {

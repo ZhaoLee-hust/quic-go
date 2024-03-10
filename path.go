@@ -60,6 +60,11 @@ type path struct {
 	timer *utils.Timer
 
 	fec *utils.AtomicBool
+
+	// add by zhaolee
+	lastRcvPacketTime time.Time
+	dTimeLogger       []time.Duration
+	rcvPacketsHistory []map[protocol.PacketNumber]time.Time
 }
 
 // FIXME this is why we should change the PathID when network changes...
@@ -244,6 +249,12 @@ func (p *path) handlePacketImpl(pkt *receivedPacket) (*unpackedPacket, error) {
 	)
 
 	// log.Printf("Received New Packet With Packet Number: %d", hdr.PacketNumber)
+	if !p.lastRcvPacketTime.IsZero() {
+		p.dTimeLogger = append(p.dTimeLogger, time.Since(p.lastRcvPacketTime))
+	}
+	p.lastRcvPacketTime = time.Now()
+
+	p.rcvPacketsHistory = append(p.rcvPacketsHistory, map[protocol.PacketNumber]time.Time{pkt.header.PacketNumber: pkt.rcvTime})
 
 	packet, err := p.sess.GetUnpacker().Unpack(hdr.Raw, hdr, data, pkt.recovered)
 	if utils.Debug() {

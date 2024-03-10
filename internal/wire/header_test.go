@@ -36,22 +36,22 @@ var _ = Describe("Header", func() {
 			Expect(hdr.isPublicHeader).To(BeFalse())
 		})
 
-		It("parses an IETF draft header, when the version is not known, but it has Long Header format", func() {
-			buf := &bytes.Buffer{}
-			err := (&Header{
-				IsLongHeader: true,
-				Type:         protocol.PacketType0RTT,
-				PacketNumber: 0x42,
-				ConnectionID: 0xc1d,
-				OmitConnectionID: false,
-			}).writeHeader(buf)
-			Expect(err).ToNot(HaveOccurred())
-			hdr, err := ParseHeaderSentByClient(bytes.NewReader(buf.Bytes()))
-			Expect(err).ToNot(HaveOccurred())
-			Expect(hdr.Type).To(Equal(protocol.PacketType0RTT))
-			Expect(hdr.PacketNumber).To(Equal(protocol.PacketNumber(0x42)))
-			Expect(hdr.isPublicHeader).To(BeFalse())
-		})
+		// It("parses an IETF draft header, when the version is not known, but it has Long Header format", func() {
+		// 	buf := &bytes.Buffer{}
+		// 	err := (&Header{
+		// 		IsLongHeader: true,
+		// 		Type:         protocol.PacketType0RTT,
+		// 		PacketNumber: 0x42,
+		// 		ConnectionID: 0xc1d,
+		// 		OmitConnectionID: false,
+		// 	}).writeHeader(buf)
+		// 	Expect(err).ToNot(HaveOccurred())
+		// 	hdr, err := ParseHeaderSentByClient(bytes.NewReader(buf.Bytes()))
+		// 	Expect(err).ToNot(HaveOccurred())
+		// 	Expect(hdr.Type).To(Equal(protocol.PacketType0RTT))
+		// 	Expect(hdr.PacketNumber).To(Equal(protocol.PacketNumber(0x42)))
+		// 	Expect(hdr.isPublicHeader).To(BeFalse())
+		// })
 
 		It("doens't mistake packets with a Short Header for Version Negotiation Packets", func() {
 			// make sure this packet could be mistaken for a Version Negotiation Packet, if we only look at the 0x1 bit

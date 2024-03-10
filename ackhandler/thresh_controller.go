@@ -16,7 +16,7 @@ const (
 	MAX_TIME_THRESH = 5
 	MIN_TIME_THRESH = 9.0 / 8.0
 	// 数量阈值最值
-	MAX_DUP_THRESH = 10
+	MAX_DUP_THRESH = 20
 	MIN_DUP_THRESH = 3
 	// 平滑滤波默认参数
 	ALPHA = 0.5
@@ -188,21 +188,21 @@ func (t *ThreshController) onNextPeriod(Acked protocol.NumberOfAckedSymbol, nNum
 		return
 	}
 
-	log.Printf("------------Global (new gap)----------------")
-	log.Printf("Symbol: Acked: %d, Sent: %d", Acked, nNumberOfSymbolsSent)
-	log.Printf("Packet: Retrans: %d, Sent: %d", nRetrans, nPackets)
-	log.Printf("RetransRate: %f, Lossrate: %f", globalRetransRate, globalLossRate)
-	pastTotalPackets := t.pastTotalPackets[len(t.pastTotalPackets)-1] - t.pastTotalPackets[0]
-	pastRetransPackets := t.pastRetransPackets[len(t.pastRetransPackets)-1] - t.pastRetransPackets[0]
-	pastTotalSymbols := t.pastTotalSymbols[len(t.pastTotalSymbols)-1] - t.pastTotalSymbols[0]
-	pastAckedSymbols := t.pastAckedSymbols[len(t.pastAckedSymbols)-1] - t.pastAckedSymbols[0]
-	log.Printf("------------Newly (new gap)-----------------")
-	log.Printf("Symbol: Acked: %d, Sent: %d", pastAckedSymbols, pastTotalSymbols)
-	log.Printf("Packet: Retrans: %d, Sent: %d", pastRetransPackets, pastTotalPackets)
-	log.Printf("RetransRate: %f, Lossrate: %f", pastRetransRate, pastLossRate)
-	log.Printf("weighted lossRate: %f, reTransRate: %f", lossRate, reTransRate)
+	// log.Printf("------------Global (new gap)----------------")
+	// log.Printf("Symbol: Acked: %d, Sent: %d", Acked, nNumberOfSymbolsSent)
+	// log.Printf("Packet: Retrans: %d, Sent: %d", nRetrans, nPackets)
+	// log.Printf("RetransRate: %f, Lossrate: %f", globalRetransRate, globalLossRate)
+	// pastTotalPackets := t.pastTotalPackets[len(t.pastTotalPackets)-1] - t.pastTotalPackets[0]
+	// pastRetransPackets := t.pastRetransPackets[len(t.pastRetransPackets)-1] - t.pastRetransPackets[0]
+	// pastTotalSymbols := t.pastTotalSymbols[len(t.pastTotalSymbols)-1] - t.pastTotalSymbols[0]
+	// pastAckedSymbols := t.pastAckedSymbols[len(t.pastAckedSymbols)-1] - t.pastAckedSymbols[0]
+	// log.Printf("------------Newly (new gap)-----------------")
+	// log.Printf("Symbol: Acked: %d, Sent: %d", pastAckedSymbols, pastTotalSymbols)
+	// log.Printf("Packet: Retrans: %d, Sent: %d", pastRetransPackets, pastTotalPackets)
+	// log.Printf("RetransRate: %f, Lossrate: %f", pastRetransRate, pastLossRate)
+	// log.Printf("weighted lossRate: %f, reTransRate: %f", lossRate, reTransRate)
 	log.Println("Threshold Updated: ", t.timeThreshold, t.dupThreshold)
-	log.Printf("\n")
+	// log.Printf("\n")
 
 }
 
@@ -231,9 +231,9 @@ func (t *ThreshController) refreshThreshold(loss, retrans float64) {
 		t.triggers = [2]int{}
 	}
 	// 限制范围
-	// t.dupThreshold = min(MAX_DUP_THRESH, max(t.dupThreshold, MIN_DUP_THRESH))
+	t.dupThreshold = min(MAX_DUP_THRESH, max(t.dupThreshold, MIN_DUP_THRESH))
 	t.dupThreshold = max(t.dupThreshold, MIN_DUP_THRESH)
-	// t.timeThreshold = min(MAX_TIME_THRESH, max(t.timeThreshold, MIN_TIME_THRESH))
+	t.timeThreshold = min(MAX_TIME_THRESH, max(t.timeThreshold, MIN_TIME_THRESH))
 	t.timeThreshold = max(t.timeThreshold, MIN_TIME_THRESH)
 	t.thresholdStatistic = append(t.thresholdStatistic, map[uint64][2]float64{t.epochIndex: {float64(t.timeThreshold), float64(t.dupThreshold)}})
 
