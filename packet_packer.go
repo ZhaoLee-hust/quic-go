@@ -328,14 +328,16 @@ func (p *packetPacker) composeNextPacket(
 	}
 
 	// modify: add symbolACKFrame for next packet
-	symbolACKFrame := p.sess.fecFrameworkReceiver.GetSymbolACKFrame()
-	if symbolACKFrame != nil {
-		payloadFrames = append(payloadFrames, symbolACKFrame)
-		l, err := symbolACKFrame.MinLength(p.version)
-		if err != nil {
-			return nil, err
+	if p.sess.fecFrameworkReceiver != nil {
+		symbolACKFrame := p.sess.fecFrameworkReceiver.GetSymbolACKFrame()
+		if symbolACKFrame != nil {
+			payloadFrames = append(payloadFrames, symbolACKFrame)
+			l, err := symbolACKFrame.MinLength(p.version)
+			if err != nil {
+				return nil, err
+			}
+			payloadLength += l
 		}
-		payloadLength += l
 	}
 
 	// 逐个取出所有的控制帧并添加到payLoadFrame中

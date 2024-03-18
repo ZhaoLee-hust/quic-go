@@ -8,12 +8,17 @@ import (
 )
 
 const DEFAULT_MAX_TRACE_BLOCKS = 5000
-const SYMBOL_GAP = 5
+const SymbolACKGap = 10
 
 type BlockTracker struct {
-	ReceivedFrames              map[protocol.FECBlockNumber][]map[protocol.FecFrameOffset]*wire.FECFrame
-	ReceivedSymbol              map[protocol.FECBlockNumber][]*RepairSymbol
-	lastReceivedSymbol          protocol.NumberOfAckedSymbol
+	ReceivedFrames map[protocol.FECBlockNumber][]map[protocol.FecFrameOffset]*wire.FECFrame
+	ReceivedSymbol map[protocol.FECBlockNumber][]*RepairSymbol
+	// 上次返回SymbolACK帧的时候，收到的Symbol个数
+	lastReceivedSymbol protocol.NumberOfAckedSymbol
+	// 最新个数
+	numberofSymbolsRcved protocol.NumberOfAckedSymbol
+	// 最大接收号
+	// maxReceivedSymbol           protocol.SymbolNumber
 	isExpiredBlocks             map[protocol.FECBlockNumber]bool
 	totalNumberOfFramesReceived uint64
 	// totalNumberOfFramesComing   uint64
@@ -64,6 +69,9 @@ func (b *BlockTracker) ReceivedNewFECFrame(frame *wire.FECFrame) {
 	symbol, _, _ := b.UpdateNewlyConfirmedSymbols(frame)
 	if symbol != nil {
 		b.ReceivedSymbol[frame.FECBlockNumber] = append(b.ReceivedSymbol[frame.FECBlockNumber], symbol)
+		// 总Symbol个数+1
+		b.numberofSymbolsRcved++
+		// fmt.Printf("BlockNumber: %v, SymbolNumber: %v, nSymbols: %v, nPkts: %v\n", symbol.FECBlockNumber, symbol.SymbolNumber, symbol.NumberOfRepairSymbols, symbol.NumberOfPackets)
 	}
 	// 适当删除某个Block,注意是整个block一起删除
 	symbolsForTheBlock := b.ReceivedSymbol[frame.FECBlockNumber]
@@ -187,27 +195,39 @@ func (b *BlockTracker) UpdateNewlyConfirmedSymbols(receivedFrame *wire.FECFrame)
 }
 
 // 计算所有block统计的所有冗余包并返回
-func (b *BlockTracker) CountReceivedSymbol() protocol.NumberOfAckedSymbol {
+func (b *BlockTracker) GetMaxReceivedSymbol() protocol.SymbolNumber {
 	var numSymbols protocol.NumberOfAckedSymbol
-	for _, Symbols := range b.ReceivedSymbol {
+	var maxRcvSymbol protocol.SymbolNumber
+	// 考虑到尾部FEC的时候，Block中的包个数可能会变小，所以这里需要一个个加。。。。
+	// TODO：优化，考虑尾部丢失
+	for BlockNumber, Symbols := range b.ReceivedSymbol {
+		// 将这个block的Symbol数量加上
 		numSymbols += protocol.NumberOfAckedSymbol(len(Symbols))
+		// 为了适应不同的Block大小不一样，这里需要单个统计
+		// 如果下一个块也存在，说明这个块一定全部发送过来了
+		if b.ReceivedSymbol[BlockNumber+1] != nil {
+			maxRcvSymbol += protocol.SymbolNumber(Symbols[0].NumberOfRepairSymbols)
+		} else {
+			// 否则，加上这个块中最后一个Symbol的SymbolNumber
+			maxRcvSymbol += protocol.SymbolNumber(Symbols[len(Symbols)-1].SymbolNumber)
+		}
 	}
-	return numSymbols
+	return maxRcvSymbol
 }
 
 // 返回一个SmybolACKFrame
 func (b *BlockTracker) GetSymbolACKFrame() *wire.SymbolAckFrame {
-	nCurrentSymbols := b.CountReceivedSymbol()
-	// if nCurrentSymbols < b.lastReceivedSymbol+SYMBOL_GAP {
-	// 	return nil
-	// }
-	if nCurrentSymbols <= b.lastReceivedSymbol {
+	// 每50个symbol返回一个SymbolACK，降低SymbolACK频率
+	if b.numberofSymbolsRcved <= b.lastReceivedSymbol+SymbolACKGap {
 		return nil
 	}
-	b.lastReceivedSymbol = nCurrentSymbols
+	// 测试功能：通过
+	// fmt.Printf("当前接收Symbol个数: %v, 最大接收号： %v \n", b.numberofSymbolsRcved, b.GetMaxReceivedSymbol())
 	frame := &wire.SymbolAckFrame{
-		SymbolReceived: nCurrentSymbols,
+		SymbolReceived:    b.numberofSymbolsRcved,
+		MaxSymbolReceived: b.GetMaxReceivedSymbol(),
 	}
+	b.lastReceivedSymbol = b.numberofSymbolsRcved
 	return frame
 }
 
@@ -218,4 +238,9 @@ func (b *BlockTracker) UpdateTackerByBlock() {
 	}
 	// TODO:complete
 	// b.ReceivedFrames = b.ReceivedFrames[]
+}
+
+// 封装函数
+func (b *BlockTracker) GetNumberOfRepairSymbols() protocol.NumberOfAckedSymbol {
+	return b.numberofSymbolsRcved
 }

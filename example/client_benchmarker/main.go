@@ -64,7 +64,7 @@ func main() {
 	// } else {
 	// 	fecvar = "nofec"
 	// }
-	LogFilePath := "/mnt/hgfs/share/log/"
+	LogFilePath := "/mnt/hgfs/share/2024/"
 	LogFilePath = LogFilePath + time.Now().Format("2006-01-02") + "/"
 	_, err := os.Stat(LogFilePath)
 	if err != nil {

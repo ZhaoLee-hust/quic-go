@@ -14,6 +14,10 @@ type NumberOfAckedSymbol uint64
 // add by zhaolee
 type SymbolNumber uint64
 
+// add by zhaolee
+const QUIC_LR = true
+const QUIC_RD = false
+
 // PacketNumberLen is the length of the packet number in bytes
 type PacketNumberLen uint8
 

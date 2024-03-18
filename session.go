@@ -175,8 +175,8 @@ type session struct {
 	senderFECScheme                   fec.FECScheme
 	redundancyController              fec.RedundancyController
 	ReceivedFECFrames                 []*wire.FECFrame //Received FEC frames not already handled
-	nRetransmissions                  uint64
-	bulkRecovery                      bool
+	// nRetransmissions                  uint64
+	bulkRecovery bool
 
 	// zhaolee
 	ACKFrames int
@@ -903,7 +903,7 @@ func (s *session) handleStreamFrame(frame *wire.StreamFrame) error {
 			os.WriteFile("rcvPacketsHistory.json", mjson, 0666)
 		}
 		symbolSent := s.fecFrameworkSender.numberOfSymbols
-		symbolRcv := s.fecFrameworkReceiver.blockTracker.CountReceivedSymbol()
+		symbolRcv := s.fecFrameworkReceiver.blockTracker.GetNumberOfRepairSymbols()
 		// for client
 		log.Printf("(session Line 895:)Number of Symbol have been sent: %d, Acked: %d", symbolSent, symbolRcv)
 
@@ -953,6 +953,8 @@ func (s *session) handleAckFrame(frame *wire.AckFrame, encLevel protocol.Encrypt
 }
 
 func (s *session) handleSymbolACKFrame(frame *wire.SymbolAckFrame, pid protocol.PathID) {
+	// 测试功能：通过
+	// fmt.Printf("当前接收Symbol个数: %v, 最大接收号： %v \n", frame.SymbolReceived, frame.MaxSymbolReceived)
 	nSymbolsSent := s.fecFrameworkSender.GetNumberOfRepairSymbols()
 	// log.Printf("handling SymbolACKFrame with current Acked: %d, current Sent: %d", frame.SymbolReceived, nSymbolsSent)
 	pth := s.paths[pid]

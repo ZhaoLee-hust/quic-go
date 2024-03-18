@@ -76,6 +76,11 @@ type FECFrameworkReceiver struct {
 
 func NewFECFrameworkReceiver(s *session, fecScheme fec.BlockFECScheme) *FECFrameworkReceiver {
 	buffer := newFecGroupsBuffer(200)
+
+	var blockTracker *fec.BlockTracker
+	if protocol.QUIC_LR {
+		blockTracker = fec.NewBlockTracker(fec.DEFAULT_MAX_TRACE_BLOCKS)
+	}
 	return &FECFrameworkReceiver{
 		fecGroupsBuffer: buffer,
 		// TODO: find a good value for the packets buffer size rather than 1000
@@ -84,8 +89,9 @@ func NewFECFrameworkReceiver(s *session, fecScheme fec.BlockFECScheme) *FECFrame
 		recoveredPackets: s.recoveredPackets,
 		doRecovery:       true,
 		fecScheme:        fecScheme,
-		blockTracker:     fec.NewBlockTracker(fec.DEFAULT_MAX_TRACE_BLOCKS),
+		blockTracker:     blockTracker,
 	}
+
 }
 
 // 将给定的packet添加到fecGroupsBuffer中,由packetUnpacker调用
@@ -216,7 +222,10 @@ func (f *FECFrameworkReceiver) handleFECFrame(frame *wire.FECFrame) {
 		// 也就是确实获取到了一个完整的symbol，那就尝试恢复，恢复成功后向上层推送
 		f.handleRepairSymbol(symbol, numberOfPacketsInFECGroup, numberOfRepairSymbols)
 	}
-	f.blockTracker.ReceivedNewFECFrame(frame)
+	// QUIC-LR的Symbol计数器，入口
+	if f.blockTracker != nil {
+		f.blockTracker.ReceivedNewFECFrame(frame)
+	}
 }
 
 // pre: the payload argument must be a full packet payload
