@@ -1,6 +1,9 @@
 package quic
 
 import (
+	"fmt"
+	"math"
+	"sort"
 	"time"
 
 	"github.com/lucas-clemente/quic-go/ackhandler"
@@ -17,6 +20,13 @@ const (
 	// XXX (QDC): To avoid idling...
 	maxPathTimer = 1 * time.Second
 )
+
+const QUICRDWindowSize = 500
+
+type BriefPacket struct {
+	PacketNumber protocol.PacketNumber
+	RcvTime      time.Time
+}
 
 type path struct {
 	pathID protocol.PathID
@@ -64,7 +74,11 @@ type path struct {
 	// add by zhaolee
 	lastRcvPacketTime time.Time
 	dTimeLogger       []time.Duration
-	rcvPacketsHistory []map[protocol.PacketNumber]time.Time
+	rcvPacketsTime    []map[protocol.PacketNumber]time.Time
+
+	// FOR QUIC-RD
+	// AS(Arrive Sequense)
+	rcvPacketsHistory []*BriefPacket
 }
 
 // FIXME this is why we should change the PathID when network changes...
@@ -249,13 +263,23 @@ func (p *path) handlePacketImpl(pkt *receivedPacket) (*unpackedPacket, error) {
 	)
 
 	// log.Printf("Received New Packet With Packet Number: %d", hdr.PacketNumber)
+	// added by zhaolee
+	// 记录接收间隔,接收时间
 	if !p.lastRcvPacketTime.IsZero() {
 		p.dTimeLogger = append(p.dTimeLogger, time.Since(p.lastRcvPacketTime))
 	}
 	p.lastRcvPacketTime = time.Now()
+	// 记录收到的数据包
+	p.rcvPacketsTime = append(p.rcvPacketsTime, map[protocol.PacketNumber]time.Time{pkt.header.PacketNumber: pkt.rcvTime})
 
-	p.rcvPacketsHistory = append(p.rcvPacketsHistory, map[protocol.PacketNumber]time.Time{pkt.header.PacketNumber: pkt.rcvTime})
+	// QUIC-RD
+	// 统计
+	p.rcvPacketsHistory = append(p.rcvPacketsHistory, &BriefPacket{
+		PacketNumber: pkt.header.PacketNumber,
+		RcvTime:      pkt.rcvTime,
+	})
 
+	// 解密,返回
 	packet, err := p.sess.GetUnpacker().Unpack(hdr.Raw, hdr, data, pkt.recovered)
 	if utils.Debug() {
 		if err != nil {
@@ -304,6 +328,258 @@ func (p *path) handlePacketImpl(pkt *receivedPacket) (*unpackedPacket, error) {
 
 	return packet, nil
 }
+
+// add by zhaolee
+func (p *path) GetRDFrame() *wire.RDFrame {
+	if p.rcvPacketsHistory == nil || len(p.rcvPacketsHistory) < QUICRDWindowSize {
+		return nil
+	}
+	var dPn, dTn int64
+	dPn, dTn = p.CalculateDisorder(p.rcvPacketsHistory)
+	p.rcvPacketsHistory = []*BriefPacket{}
+	return &wire.RDFrame{
+		MaxDisPlacement: uint16(dPn),
+		MaxDelay:        uint16(dTn),
+	}
+}
+
+// add by zhaolee
+func (p *path) CalculateDisorder(AS []*BriefPacket) (int64, int64) {
+	Displacement, Delay := p.GetDisplacementAndDelay(AS)
+	if Displacement == nil && Delay == nil {
+		return 0, 0
+	}
+	// 返回最小的dPn和最大的dTn
+	// 最小的应该是负的
+	sort.Slice(Displacement, func(i, j int) bool {
+		return Displacement[i] < Displacement[j]
+	})
+	// 反转
+	dPn := Displacement[0]
+	if dPn > 0 {
+		fmt.Println("BUG!全部数据包均延后到达!")
+	} else {
+		// fmt.Printf("dPn返回值:%v\n", -dPn)
+		dPn = -dPn
+	}
+	// 计算延迟时间,最大的就是最大延迟时间
+	sort.Slice(Delay, func(i, j int) bool {
+		return Delay[i] > Delay[j]
+	})
+	var dTn int64
+	// 单位改为毫秒
+	dTn = Delay[0].Milliseconds()
+	if Delay[0] < 0 {
+		fmt.Println("BUG!全部数据包均延后到达!")
+		dTn = 0
+	}
+
+	return dPn, dTn
+}
+
+// add by zhaolee
+func (p *path) GetDisplacementAndDelay(AS []*BriefPacket) ([]int64, []time.Duration) {
+	if len(AS) == 0 {
+		return nil, nil
+	}
+
+	// 将packets按照map的形式存放
+	packetMap := make(map[protocol.PacketNumber]*BriefPacket)
+	RIs := make([]protocol.PacketNumber, 0)
+	for _, packet := range AS {
+		pn := packet.PacketNumber
+		// 通过存在性判断来去重，存在过的包跳过，不存在的则插入
+		if _, ok := packetMap[pn]; !ok {
+			packetMap[pn] = packet
+			RIs = append(RIs, pn)
+		}
+	}
+
+	// 将RI增序排列
+	sort.Slice(RIs, func(i, j int) bool {
+		return RIs[i] < RIs[j]
+	})
+
+	// 接下来计算每个数据包的dP(n)
+	dPn := make([]int64, 0)
+	for i, RI := range RIs {
+		// 检测数据包的存在性
+		if _, ok := packetMap[RI]; !ok {
+			panic("BUG!")
+		}
+		dPn = append(dPn, int64(RI)-int64(AS[i].PacketNumber))
+	}
+
+	// 接下来对乱序的数据包计算dT(n)
+	dTn := make([]time.Duration, 0)
+	for i, dPni := range dPn {
+		p := AS[i]
+		var eTn time.Time
+		// 如果数据包提前到达，其期望时间不做更改
+		if dPni <= 0 {
+			eTn = p.RcvTime
+		} else {
+			ne, np, find := findIJ(AS, i)
+			if find {
+				eTn = interpolate(AS[ne], AS[np], p)
+			} else {
+				eTn = roughly(AS, p.PacketNumber)
+				if p.RcvTime.Sub(eTn) > 1*time.Second {
+					fmt.Println("出现BUG!", p.PacketNumber, eTn)
+					for _, p := range AS {
+						fmt.Println(p.PacketNumber, p.RcvTime)
+					}
+				}
+			}
+			// fmt.Println(ne, np, find, p.PacketNumber, eTn.Sub(time.Time{}).Milliseconds())
+		}
+		dTn = append(dTn, p.RcvTime.Sub(eTn))
+	}
+
+	return dPn, dTn
+
+}
+
+// add by zhaolee
+// 请注意，这些实现需要根据实际的数据结构和要求进行适当调整
+func findIJ(AS []*BriefPacket, currentIndex int) (int, int, bool) {
+	var i, j int = -1, -1
+	var minDiffToI, minDiffToJ protocol.PacketNumber = math.MaxUint64, math.MaxUint64
+	currentPacketNumber := AS[currentIndex].PacketNumber
+
+	// 向前查找最近的i，满足包号最接近且小于给定包号
+	for index := 0; index < currentIndex; index++ {
+		if AS[index].PacketNumber < currentPacketNumber {
+			diff := currentPacketNumber - AS[index].PacketNumber
+			if diff < minDiffToI {
+				i = index
+				minDiffToI = diff
+			}
+		}
+	}
+
+	// 向后查找最近的j，满足包号最接近且大于给定包号
+	for index := currentIndex + 1; index < len(AS); index++ {
+		if AS[index].PacketNumber > currentPacketNumber {
+			diff := AS[index].PacketNumber - currentPacketNumber
+			if diff < minDiffToJ {
+				j = index
+				minDiffToJ = diff
+			}
+		}
+	}
+
+	return i, j, i != -1 && j != -1
+}
+
+// add by zhaolee
+func interpolate(pi, pj, p *BriefPacket) time.Time {
+	if !(pi.PacketNumber < p.PacketNumber && p.PacketNumber < pj.PacketNumber) {
+		fmt.Println("Invalid Input for Interpolating.")
+		return p.RcvTime
+	}
+	// 计算两个参考点之间的时间差和包号差
+	timeDiff := pj.RcvTime.Sub(pi.RcvTime)
+	packetNumberDiff := pj.PacketNumber - pi.PacketNumber
+
+	// 计算被插值点相对于pi的包号差占总包号差的比例
+	ratio := float64(p.PacketNumber-pi.PacketNumber) / float64(packetNumberDiff)
+
+	// 使用这个比例来计算时间差
+	delta := time.Duration(float64(timeDiff) * ratio)
+
+	// 计算并返回被插值点的期望接收时间
+	return pi.RcvTime.Add(delta)
+}
+
+// add by zhaolee
+func roughly(AS []*BriefPacket, n protocol.PacketNumber) time.Time {
+
+	var closestDiff protocol.PacketNumber = math.MaxUint64
+	var nearestPacket = []*BriefPacket{}
+
+	// 遍历所有数据包，找到与n包号差距最小的数据包
+	for _, packet := range AS {
+		if packet.PacketNumber == n { // 跳过相同包号的数据包
+			continue
+		}
+		// 计算差异，确保差异总是正值
+		diff := packet.PacketNumber - n
+		if n > packet.PacketNumber {
+			diff = n - packet.PacketNumber
+		}
+
+		if diff < closestDiff {
+			// 发现了更接近的数据包
+			closestDiff = diff
+			nearestPacket = []*BriefPacket{packet}
+		} else if diff == closestDiff {
+			// 同样接近，添加到列表
+			nearestPacket = append(nearestPacket, packet)
+		}
+		// 如果已经找到两个最接近的包，且差异为1，提前结束
+		if closestDiff == 1 && len(nearestPacket) >= 2 {
+			break
+		}
+	}
+
+	if len(nearestPacket) == 0 {
+		return time.Now() // 没有找到任何最接近的包
+	}
+	// 计算所有最接近包的平均接收时间
+	refTime := nearestPacket[0].RcvTime
+	var sum time.Duration
+	for _, p := range nearestPacket {
+		sum += p.RcvTime.Sub(refTime)
+	}
+
+	averageDuration := sum / time.Duration(len(nearestPacket))
+	averageTime := refTime.Add(averageDuration)
+
+	return averageTime
+}
+
+// 该函数会出现BUG,但不知道为什么,似乎逻辑没有区别
+// func roughly(AS []*BriefPacket, n protocol.PacketNumber) time.Time {
+
+// 	var closestDiff protocol.PacketNumber = math.MaxUint64
+// 	var closestTimeSum time.Duration
+// 	var closestCount int
+
+// 	// 遍历所有数据包，找到与n包号差距最小的数据包
+// 	for _, packet := range AS {
+// 		if packet.PacketNumber == n {
+// 			continue
+// 		}
+// 		diff := packet.PacketNumber - n
+// 		if n > packet.PacketNumber {
+// 			diff = n - packet.PacketNumber
+// 		}
+
+// 		if diff < closestDiff {
+// 			// 发现了更接近的数据包，重置计数和总和
+// 			closestDiff = diff
+// 			closestTimeSum = packet.RcvTime.Sub(time.Time{})
+// 			closestCount = 1
+// 		} else if diff == closestDiff {
+// 			// 发现另一个同样接近的数据包，累加其接收时间
+// 			closestTimeSum += packet.RcvTime.Sub(time.Time{})
+// 			closestCount++
+// 		}
+
+// 	}
+
+// 	// fmt.Println("ClosestCount=", closestCount, ",closestTimeSum=", closestTimeSum)
+
+// 	if closestCount == 0 {
+// 		// 如果没有找到最接近的包，理论上不应该发生
+// 		return time.Now() // 或其他合理的默认值
+// 	}
+
+// 	// 如果找到了最接近的包，根据找到的数量计算平均时间
+// 	avgTime := time.Time{}.Add(closestTimeSum / time.Duration(closestCount))
+// 	return avgTime
+// }
 
 func (p *path) onRTO(lastSentTime time.Time) bool {
 	p.facedRTO.Set(true)

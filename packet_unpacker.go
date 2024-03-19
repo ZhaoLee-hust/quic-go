@@ -168,6 +168,8 @@ func (u *packetUnpacker) Unpack(headerBinary []byte, hdr *wire.Header, data []by
 			// log.Printf("DECODE SymBolAckFrame")
 			// r.ReadByte()
 			frame, err = wire.ParseSymbolAckFrame(r, u.version)
+		} else if typeByte == 0x14 {
+			frame, err = wire.ParseRDFrame(r, u.version)
 		} else {
 			err = qerr.Error(qerr.InvalidFrameData, fmt.Sprintf("unknown type byte 0x%x", typeByte))
 		}

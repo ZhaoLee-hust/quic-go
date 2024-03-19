@@ -327,8 +327,22 @@ func (p *packetPacker) composeNextPacket(
 		payloadLength += l
 	}
 
+	// FOR QUIC-RD
+	if protocol.QUIC_RD {
+		RDFrame := pth.GetRDFrame()
+		if RDFrame != nil {
+			payloadFrames = append(payloadFrames, RDFrame)
+			l, err := RDFrame.MinLength(p.version)
+			if err != nil {
+				return nil, err
+			}
+			payloadLength += l
+		}
+	}
+
 	// modify: add symbolACKFrame for next packet
-	if p.sess.fecFrameworkReceiver != nil {
+	// FOR QUIC-LR
+	if p.sess.fecFrameworkReceiver != nil && protocol.QUIC_LR {
 		symbolACKFrame := p.sess.fecFrameworkReceiver.GetSymbolACKFrame()
 		if symbolACKFrame != nil {
 			payloadFrames = append(payloadFrames, symbolACKFrame)

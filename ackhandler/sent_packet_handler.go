@@ -134,6 +134,9 @@ type sentPacketHandler struct {
 
 	// 是否启用FR，tlp必须启用FR
 	useFastRetransmit bool
+
+	// 直接把RDFrame放在这里就可以了
+	rdFrame *wire.RDFrame
 }
 
 var _ SentPacketHandler = &sentPacketHandler{}
@@ -178,6 +181,12 @@ func NewSentPacketHandler(
 	return handler
 }
 
+// FOR QUIC-RD
+func (h *sentPacketHandler) HandleRDFrame(frame *wire.RDFrame) {
+	h.rdFrame = frame
+}
+
+// FOR QUIC-LR
 func (h *sentPacketHandler) ReceiveSymbolAck(frame *wire.SymbolAckFrame, nNumberOfSymbolsSent uint64) {
 	h.ackedSymbol = uint64(frame.SymbolReceived)
 	h.thresholdController.updateThreshold(frame)
@@ -579,16 +588,24 @@ func (h *sentPacketHandler) detectLostPackets() {
 
 	// maxRTT是LatestRTT和SmoothedRTT的较大者
 	maxRTT := float64(utils.MaxDuration(h.rttStats.LatestRTT(), h.rttStats.SmoothedRTT()))
-	// 1.25个maxRTT
-	useConrol := true
-	timeThreshold := timeReorderingFraction
-	dupThreshod := kReorderingThreshold
-	if useConrol {
+
+	var timeThreshold float64 = timeReorderingFraction
+	var packetThreshold uint16 = kReorderingThreshold
+
+	if protocol.QUIC_LR {
 		timeThreshold = h.thresholdController.getTimeThreshold()
-		dupThreshod = h.thresholdController.getPacketThreshold()
+		pt := h.thresholdController.getPacketThreshold()
+		packetThreshold = uint16(pt)
 	}
 
 	delayUntilLost := time.Duration((1.0 + timeThreshold) * maxRTT)
+
+	if protocol.QUIC_RD && h.rdFrame != nil {
+		delayUntilLost = delayUntilLost + time.Millisecond*time.Duration(h.rdFrame.MaxDelay)
+		packetThreshold += h.rdFrame.MaxDisPlacement
+		fmt.Printf("QUIC-RD Controlling! New time = %v(%v Increased), New PT = %v\n", delayUntilLost.Milliseconds(), h.rdFrame.MaxDelay, packetThreshold)
+	}
+
 	var lostPackets []*PacketElement
 	// 遍历history
 	for el := h.packetHistory.Front(); el != nil; el = el.Next() {
@@ -603,20 +620,22 @@ func (h *sentPacketHandler) detectLostPackets() {
 		timeSinceSent := now.Sub(packet.SendTime)
 		// 如果使用快传,且最大被确认数大于3,且当前数据包号小于最大确认数-3;从发送到现在的时间大于1.25个maxRTT
 		// if (h.useFastRetransmit && h.LargestAcked >= kReorderingThreshold && packet.PacketNumber <= h.LargestAcked-kReorderingThreshold) || timeSinceSent > delayUntilLost {
-		var reason LossTrigger
-		if h.LargestAcked >= protocol.PacketNumber(dupThreshod) && packet.PacketNumber <= h.LargestAcked-protocol.PacketNumber(dupThreshod) {
-			reason = lossByDuplicate
-		}
-		if timeSinceSent > delayUntilLost {
-			reason = lossByDelay
-		}
-		if reason != noLoss {
-			h.thresholdController.OnPacketLostBy(reason)
+		if protocol.QUIC_LR {
+			var reason LossTrigger
+			if h.LargestAcked >= protocol.PacketNumber(packetThreshold) && packet.PacketNumber <= h.LargestAcked-protocol.PacketNumber(packetThreshold) {
+				reason = lossByDuplicate
+			}
+			if timeSinceSent > delayUntilLost {
+				reason = lossByDelay
+			}
+			if reason != noLoss {
+				h.thresholdController.OnPacketLostBy(reason)
+			}
 		}
 		// RACK是默认启用，FACK是可选的，FACK在乱序的时候有很大影响
 		if (h.useFastRetransmit &&
-			h.LargestAcked >= protocol.PacketNumber(dupThreshod) &&
-			packet.PacketNumber <= h.LargestAcked-protocol.PacketNumber(dupThreshod)) ||
+			h.LargestAcked >= protocol.PacketNumber(packetThreshold) &&
+			packet.PacketNumber <= h.LargestAcked-protocol.PacketNumber(packetThreshold)) ||
 			timeSinceSent > delayUntilLost {
 			// Update statistics
 			// 标记丢包,当发送时间大于1.25个rtt会被标记为丢包;快传被确认3个包也会

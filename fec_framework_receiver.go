@@ -72,6 +72,9 @@ type FECFrameworkReceiver struct {
 	fecScheme    fec.BlockFECScheme
 	AdaptiveCtrl *fec.AdaptiveController
 	blockTracker *fec.BlockTracker
+
+	// 本层跟踪冗余包个数
+	numberOfRepairSymbols uint64
 }
 
 func NewFECFrameworkReceiver(s *session, fecScheme fec.BlockFECScheme) *FECFrameworkReceiver {
@@ -220,6 +223,7 @@ func (f *FECFrameworkReceiver) handleFECFrame(frame *wire.FECFrame) {
 	symbol, numberOfPacketsInFECGroup, numberOfRepairSymbols := f.getRepairSymbolForSomeFECGroup(frame)
 	if symbol != nil {
 		// 也就是确实获取到了一个完整的symbol，那就尝试恢复，恢复成功后向上层推送
+		f.numberOfRepairSymbols++
 		f.handleRepairSymbol(symbol, numberOfPacketsInFECGroup, numberOfRepairSymbols)
 	}
 	// QUIC-LR的Symbol计数器，入口
@@ -383,6 +387,10 @@ func (f *FECFrameworkReceiver) putWaitingFrame(frame *wire.FECFrame) {
 		// 定位Group--定位某个Symbol的--定位到具体的Frame
 		waitingFramesForSymbol[frame.Offset] = frame
 	}
+}
+
+func (f *FECFrameworkReceiver) GetNumberOfRepairSymbols() uint64 {
+	return f.numberOfRepairSymbols
 }
 
 type fecGroupsBuffer struct {

@@ -41,6 +41,7 @@ type SentPacketHandler interface {
 
 	// add by zhaolee
 	ReceiveSymbolAck(*wire.SymbolAckFrame, uint64)
+	HandleRDFrame(*wire.RDFrame)
 	// GetNumberOfRepairSymbols() uint64
 	GetAckedSymbols() uint64
 	GetthresholdStatistic() ([]map[uint64][2]float64, []map[uint64][2]uint64, []map[uint64][2]uint64)
@@ -48,7 +49,9 @@ type SentPacketHandler interface {
 
 // ReceivedPacketHandler handles ACKs needed to send for incoming packets
 type ReceivedPacketHandler interface {
+	// change by zhaolee, add the whole packets for reorder detection!
 	ReceivedPacket(packetNumber protocol.PacketNumber, shouldInstigateAck bool, recovered bool) error
+	// ReceivedPacket(packetNumber protocol.PacketNumber, shouldInstigateAck bool, recovered bool, pkt *ReceivedPacket) error
 	SetLowerLimit(protocol.PacketNumber)
 
 	GetAlarmTimeout() time.Time

@@ -829,6 +829,11 @@ func (s *session) handleFrames(fs []wire.Frame, encLevel protocol.EncryptionLeve
 			// 	s.fecFrameworkSender.handleSymbolACKFrame(frame)
 			// }
 			s.handleSymbolACKFrame(frame, p.pathID)
+		case *wire.RDFrame:
+			fmt.Printf("收到RDFrame,dPn=%v,dTn=%v\n", frame.MaxDisPlacement, frame.MaxDelay)
+			// add by zhaolee
+			// 注意，目前只考虑单路径
+			p.sentPacketHandler.HandleRDFrame(frame)
 		default:
 			return errors.New("Session BUG: unexpected frame type")
 		}
@@ -899,11 +904,11 @@ func (s *session) handleStreamFrame(frame *wire.StreamFrame) error {
 			mjson, _ := json.Marshal(pth.dTimeLogger)
 			_ = os.WriteFile("dRcvPacketTime.json", mjson, 0666)
 
-			mjson, _ = json.Marshal(pth.rcvPacketsHistory)
+			mjson, _ = json.Marshal(pth.rcvPacketsTime)
 			os.WriteFile("rcvPacketsHistory.json", mjson, 0666)
 		}
 		symbolSent := s.fecFrameworkSender.numberOfSymbols
-		symbolRcv := s.fecFrameworkReceiver.blockTracker.GetNumberOfRepairSymbols()
+		symbolRcv := s.fecFrameworkReceiver.GetNumberOfRepairSymbols()
 		// for client
 		log.Printf("(session Line 895:)Number of Symbol have been sent: %d, Acked: %d", symbolSent, symbolRcv)
 

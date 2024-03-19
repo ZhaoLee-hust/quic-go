@@ -10,11 +10,12 @@ import (
 
 var RDFrameTypeByte byte = 0x14
 
-// An SymbolAckFrame is an ACK frame in QUIC
+// An RDFrame is a Reorder Detection Frame in QUIC
 type RDFrame struct {
-	// We just need one parameter to show how many symbols have been accepted.
-	TimeThresholdMS uint16
-	PacketThreshold uint16
+	// dPn
+	MaxDisPlacement uint16
+	// dTn, ms
+	MaxDelay uint16
 }
 
 var _ Frame = &RDFrame{}
@@ -30,10 +31,9 @@ func (rd *RDFrame) MinLength(version protocol.VersionNumber) (protocol.ByteCount
 
 func (rd *RDFrame) Write(b *bytes.Buffer, version protocol.VersionNumber) error {
 	//Write TypeByte
-	typeByte := RDFrameTypeByte
-	b.WriteByte(typeByte)
-	utils.GetByteOrder(version).WriteUint16(b, rd.TimeThresholdMS)
-	utils.GetByteOrder(version).WriteUint16(b, rd.PacketThreshold)
+	b.WriteByte(RDFrameTypeByte)
+	utils.GetByteOrder(version).WriteUint16(b, rd.MaxDisPlacement)
+	utils.GetByteOrder(version).WriteUint16(b, rd.MaxDelay)
 	return nil
 }
 
@@ -49,11 +49,11 @@ func ParseRDFrame(r *bytes.Reader, version protocol.VersionNumber) (*RDFrame, er
 		return nil, errInvalidRDTypeByte
 	}
 
-	timeT, _ := utils.GetByteOrder(version).ReadUint16(r)
-	frame.TimeThresholdMS = timeT
+	dPn, _ := utils.GetByteOrder(version).ReadUint16(r)
+	frame.MaxDisPlacement = dPn
 
-	packetT, _ := utils.GetByteOrder(version).ReadUint16(r)
-	frame.PacketThreshold = packetT
+	dTn, _ := utils.GetByteOrder(version).ReadUint16(r)
+	frame.MaxDelay = dTn
 
 	return frame, nil
 }
