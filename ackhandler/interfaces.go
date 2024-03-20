@@ -44,7 +44,8 @@ type SentPacketHandler interface {
 	HandleRDFrame(*wire.RDFrame)
 	// GetNumberOfRepairSymbols() uint64
 	GetAckedSymbols() uint64
-	GetthresholdStatistic() ([]map[uint64][2]float64, []map[uint64][2]uint64, []map[uint64][2]uint64)
+	// RDFrame, SymbolACKFrame, Thresholds, PktStatistic, RTTS
+	GetTransmissionStatistic() ([][2]uint16, [][2]uint64, [][2]uint64, [][3]uint64, []time.Duration)
 }
 
 // ReceivedPacketHandler handles ACKs needed to send for incoming packets

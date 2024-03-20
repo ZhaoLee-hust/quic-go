@@ -1,11 +1,11 @@
 package ackhandler
 
 import (
-	"log"
 	"time"
 
 	"github.com/lucas-clemente/quic-go/congestion"
 	"github.com/lucas-clemente/quic-go/internal/protocol"
+	"github.com/lucas-clemente/quic-go/internal/utils"
 	"github.com/lucas-clemente/quic-go/internal/wire"
 )
 
@@ -59,6 +59,11 @@ type QUICLRController struct {
 	byPacket uint16
 	byTime   uint16
 
+	// pkt和rtt的回调函数
+	// h.packets, h.retransmissions, h.losses
+	pktCallBacK func() (uint64, uint64, uint64)
+	rttCallBack *congestion.RTTStats
+
 	// 后面的赞不需要
 	// symbol的统计参数
 	symbolStatistic *symbolStatistic
@@ -67,20 +72,6 @@ type QUICLRController struct {
 
 	//时间周期
 	lastRefreshTime time.Time
-
-	// pkt和rtt的回调函数
-	// h.packets, h.retransmissions, h.losses
-	pktCallBacK func() (uint64, uint64, uint64)
-	rttCallBack *congestion.RTTStats
-
-	// 时隙编号
-	epochIndex uint64
-
-	// 过去5个时隙
-	pastTotalPackets   []uint64 // 过去时隙的数据包总数
-	pastRetransPackets []uint64 // 过去时隙的重传数据包数
-	pastTotalSymbols   []uint64
-	pastAckedSymbols   []uint64
 
 	// 统计函数
 	thresholdStatistic []map[uint64][2]float64
@@ -105,9 +96,6 @@ func NewThreshController(pktcallback func() (uint64, uint64, uint64), rttCallBac
 		// h.packets, h.retransmissions, h.losses
 		pktCallBacK: pktcallback,
 		rttCallBack: rttCallBack,
-
-		//
-		epochIndex: 1,
 	}
 }
 func (t *QUICLRController) getSmothedRTT() time.Duration {
@@ -118,13 +106,13 @@ func (t *QUICLRController) updateThreshold(SymbolACK *wire.SymbolAckFrame) {
 	lossRate := 1 - float64(SymbolACK.SymbolReceived)/float64(SymbolACK.MaxSymbolReceived)
 	nPackets, nRetrans, _ := t.pktCallBacK()
 	if nPackets == nRetrans {
-		log.Println("BUG:全部重传了！")
+		utils.Debugf("BUG:全部重传了！")
 	}
 	retransRate := float64(nRetrans) / (float64(nPackets) - float64(nRetrans))
 	// 计算NRTT=SRTT(P(n)-P(n-1))/(t(n)-t(n-1))
 	NRTT := t.getSmothedRTT() * time.Duration(SymbolACK.MaxSymbolReceived-t.lastMaxAckedSymbol) / time.Since(t.lastRefreshTime)
 	if t.byPacket+t.byTime == 0 {
-		log.Println("No Loss in the Previous Period!")
+		utils.Debugf("No Loss in the Previous Period!")
 		return
 	}
 	// 分配比例

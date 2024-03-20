@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -38,7 +39,7 @@ func main() {
 	// }()
 	verbose := flag.Bool("v", false, "verbose")
 	multipath := flag.Bool("m", false, "multipath")
-	output := flag.String("o", "", "logging output")
+	// output := flag.String("o", "", "logging output")
 	cache := flag.Bool("c", false, "cache handshake information")
 	fsFlag := flag.String("fs", "rs", "rs, rlc or xor")
 
@@ -46,10 +47,30 @@ func main() {
 	port := flag.String("port", "6121", "The port will listen on")
 	filename := flag.String("f", "file2", "Filename")
 
-	use_fec := flag.Bool("u", false, "whether use FEC")
-	rc := flag.String("s", "c", "choose a redundancy controller")
+	// use_fec := flag.Bool("u", false, "whether use FEC")
+	rc := flag.String("rc", "c", "choose a redundancy controller")
 	keylog := flag.String("key", "/home/zhaolee/go/src/github.com/lucas-clemente/quic-go/example/client_benchmarker/key.log", "key log file")
+
+	EnhanceScheme := flag.String("s", "none", "choos from none, QUIC_LR, QUIC_RD")
+
 	flag.Parse()
+
+	if *EnhanceScheme == "lr" {
+		log.Printf("开启QUIC-LR策略!")
+
+		protocol.QUIC_LR = true
+		protocol.QUIC_RD = false
+	} else if *EnhanceScheme == "rd" {
+		log.Printf("开启QUIC-RD策略!")
+
+		protocol.QUIC_LR = false
+		protocol.QUIC_RD = true
+	} else {
+		log.Printf("QUIC-LR和QUIC-RD均不启用!")
+
+		protocol.QUIC_LR = false
+		protocol.QUIC_RD = false
+	}
 
 	//config logfile
 	if *verbose {
@@ -58,39 +79,22 @@ func main() {
 		utils.SetLogLevel(utils.LogLevelInfo)
 	}
 	utils.SetLogLevel(utils.LogLevelError)
-	// fecvar := ""
-	// if *use_fec {
-	// 	fecvar = *fsFlag
-	// } else {
-	// 	fecvar = "nofec"
-	// }
-	LogFilePath := "/mnt/hgfs/share/2024/"
-	LogFilePath = LogFilePath + time.Now().Format("2006-01-02") + "/"
-	_, err := os.Stat(LogFilePath)
-	if err != nil {
-		os.Mkdir(LogFilePath, os.ModePerm)
-	}
-	if *output != "" {
-		logFileName := *output
-		logfile, err := os.Create(LogFilePath + logFileName)
-		if err != nil {
-			panic(err)
-		}
-		defer logfile.Close()
-		log.SetOutput(logfile)
-	}
 
+	// LogFilePath := "/mnt/hgfs/share/2024/"
+	// LogFilePath = LogFilePath + time.Now().Format("2006-01-02") + "/"
+	// _, err := os.Stat(LogFilePath)
+	// if err != nil {
+	// 	os.Mkdir(LogFilePath, os.ModePerm)
+	// }
 	// if *output != "" {
-	// 	// fecSchemeFlag= rs xor rlc
-	// 	logfile, err := os.Create(LogFilePath + fecvar + "_" + *output + ".txt")
+	// 	logFileName := *output
+	// 	logfile, err := os.Create(LogFilePath + logFileName)
 	// 	if err != nil {
 	// 		panic(err)
 	// 	}
 	// 	defer logfile.Close()
 	// 	log.SetOutput(logfile)
 	// }
-	// logExp := "CNOPackets" + "    " + "TNOPackets" + "    " + "CNOSymbols" + "    " + "TNOSymbols" + "    " + "NRECPackets\n"
-	// utils.Infof(logExp)
 
 	//config multipath
 	var maxPathID uint8
@@ -148,7 +152,7 @@ func main() {
 		FECScheme:                         fs,
 		RedundancyController:              rr,
 		DisableFECRecoveredFrames:         DISABLE_RECOVERED_FRAMES,
-		ProtectReliableStreamFrames:       *use_fec,
+		ProtectReliableStreamFrames:       true || *EnhanceScheme == "lr",
 		UseFastRetransmit:                 true,
 		OnlySendFECWhenApplicationLimited: RS_WHEN_APPLICATION_LIMITED,
 	}
@@ -194,6 +198,10 @@ func main() {
 			log.Printf("transfer length: %d", body.Len())
 			// fmt.Sprintln("transfer time:", elapsed)
 			log.Printf("transfer time: %s", elapsed)
+
+			// 微秒单位
+			mjson, _ := json.Marshal([]int64{elapsed.Microseconds()})
+			_ = os.WriteFile("client_TransferTime.json", mjson, 0644)
 
 			wg.Done()
 		}(addr)

@@ -830,7 +830,7 @@ func (s *session) handleFrames(fs []wire.Frame, encLevel protocol.EncryptionLeve
 			// }
 			s.handleSymbolACKFrame(frame, p.pathID)
 		case *wire.RDFrame:
-			fmt.Printf("收到RDFrame,dPn=%v,dTn=%v\n", frame.MaxDisPlacement, frame.MaxDelay)
+			utils.Debugf("收到RDFrame,dPn=%v,dTn=%v\n", frame.MaxDisPlacement, frame.MaxDelay)
 			// add by zhaolee
 			// 注意，目前只考虑单路径
 			p.sentPacketHandler.HandleRDFrame(frame)
@@ -890,22 +890,23 @@ func (s *session) handleStreamFrame(frame *wire.StreamFrame) error {
 		// Print client statistics about its paths
 
 		s.pathsLock.RLock()
-		log.Printf("Info for stream %x of %x", frame.StreamID, s.connectionID)
+		utils.Infof("Info for stream %x of %x", frame.StreamID, s.connectionID)
+		utils.Infof("接收端收到了最后一个流帧。")
 		for pathID, pth := range s.paths {
 			sntPkts, sntRetrans, sntLost := pth.sentPacketHandler.GetStatistics()
 			rcvPkts, recoveredPkts := pth.receivedPacketHandler.GetStatistics()
-			log.Printf("Path %x: sent %d retrans %d lost %d; rcv %d, recovered %d", pathID, sntPkts, sntRetrans, sntLost, rcvPkts, recoveredPkts)
+			utils.Infof("Path %x: sent %d retrans %d lost %d; rcv %d, recovered %d", pathID, sntPkts, sntRetrans, sntLost, rcvPkts, recoveredPkts)
 			// modify -add
-			log.Printf("Number of recovered packets in all: %d", fec.NumberofRecoveredPacket)
-			// utils.Infof("Redundancycontroller: D:%d,R:%d", s.redundancyController.GetNumberOfDataSymbols(), s.redundancyController.GetNumberOfRepairSymbols())
-			// utils.Infof("Redundancycontroller: D:%d,R:%d", s.fecFrameworkSender.redundancyController.GetNumberOfDataSymbols(), s.fecFrameworkSender.redundancyController.GetNumberOfRepairSymbols())
+			utils.Infof("Number of recovered packets in all: %d", fec.NumberofRecoveredPacket)
 
+			// 客户端
 			// add by zhaolee
+			// 存每个数据包的接收间隔
 			mjson, _ := json.Marshal(pth.dTimeLogger)
-			_ = os.WriteFile("dRcvPacketTime.json", mjson, 0666)
-
+			_ = os.WriteFile("client_DeltaRcvPacketTime.json", mjson, 0666)
+			// 存每个数据包的接收时间
 			mjson, _ = json.Marshal(pth.rcvPacketsTime)
-			os.WriteFile("rcvPacketsHistory.json", mjson, 0666)
+			os.WriteFile("client_RcvPacketsTime.json", mjson, 0666)
 		}
 		symbolSent := s.fecFrameworkSender.numberOfSymbols
 		symbolRcv := s.fecFrameworkReceiver.GetNumberOfRepairSymbols()

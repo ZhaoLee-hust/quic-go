@@ -14,6 +14,7 @@ import (
 	"github.com/lucas-clemente/quic-go/fec"
 	"github.com/lucas-clemente/quic-go/h2quic"
 	"github.com/lucas-clemente/quic-go/internal/protocol"
+	"github.com/lucas-clemente/quic-go/internal/utils"
 )
 
 var certPath string
@@ -51,11 +52,33 @@ func main() {
 	norf := flag.Bool("no-rf", false, "Use this flag to prevent the receiver from sending recovered frames")
 	cache := flag.Bool("c", false, "cache handshake information")
 	port := flag.String("port", "6121", "The port will listen on")
-	output := flag.String("o", "", "logging output")
-	use_fec := flag.Bool("u", false, "whether use FEC")
-	rc := flag.String("rc", "r", "choose a redundancy controller")
-	lossRate := flag.Int("l", 0, "Set LossRate")
+	// output := flag.String("o", "", "logging output")
+	// use_fec := flag.Bool("u", false, "whether use FEC")
+	rc := flag.String("rc", "c", "choose a redundancy controller")
+	// lossRate := flag.Int("l", 0, "Set LossRate")
+
+	EnhanceScheme := flag.String("s", "none", "choos from none, QUIC_LR, QUIC_RD")
+
 	flag.Parse()
+
+	if *EnhanceScheme == "lr" {
+		log.Printf("开启QUIC-LR策略!")
+
+		protocol.QUIC_LR = true
+		protocol.QUIC_RD = false
+	} else if *EnhanceScheme == "rd" {
+		log.Printf("开启QUIC-RD策略!")
+
+		protocol.QUIC_LR = false
+		protocol.QUIC_RD = true
+	} else {
+		log.Printf("QUIC-LR和QUIC-RD均不启用!")
+
+		protocol.QUIC_LR = false
+		protocol.QUIC_RD = false
+	}
+
+	utils.SetLogLevel(utils.LogLevelError)
 
 	NUMBER_OF_SOURCE_SYMBOLS = *nss
 	NUMBER_OF_REPAIR_SYMBOLS = *nrs
@@ -71,30 +94,30 @@ func main() {
 		os.Mkdir(LogFilePath, os.ModePerm)
 	}
 	// now := time.Now()
-	fecvar := ""
-	if *use_fec {
-		// rs xor
-		fecvar = *fsFlag
-	} else {
-		fecvar = "nofec"
-	}
-	logFileName := fmt.Sprintf("fs+nki+loss=%s_%d_%d_%d_%d.txt",
-		// now.Format("2006.01.02 15:04:05"),
-		fecvar,
-		NUMBER_OF_SOURCE_SYMBOLS,
-		NUMBER_OF_REPAIR_SYMBOLS,
-		NUMBER_OF_INTERLEAVED_BLOCKS,
-		*lossRate)
+	// fecvar := ""
+	// if *use_fec {
+	// 	// rs xor
+	// 	fecvar = *fsFlag
+	// } else {
+	// 	fecvar = "nofec"
+	// }
+	// logFileName := fmt.Sprintf("fs+nki+loss=%s_%d_%d_%d_%d.txt",
+	// 	// now.Format("2006.01.02 15:04:05"),
+	// 	fecvar,
+	// 	NUMBER_OF_SOURCE_SYMBOLS,
+	// 	NUMBER_OF_REPAIR_SYMBOLS,
+	// 	NUMBER_OF_INTERLEAVED_BLOCKS,
+	// 	*lossRate)
 
-	if *output != "" {
-		logFileName = *output
-		logfile, err := os.Create(LogFilePath + logFileName)
-		if err != nil {
-			panic(err)
-		}
-		defer logfile.Close()
-		log.SetOutput(logfile)
-	}
+	// if *output != "" {
+	// 	logFileName = *output
+	// 	logfile, err := os.Create(LogFilePath + logFileName)
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+	// 	defer logfile.Close()
+	// 	log.SetOutput(logfile)
+	// }
 
 	// log.Println(LogFilePath + logFileName)
 
@@ -111,9 +134,6 @@ func main() {
 
 	//config fec scheme
 	var fecScheme string = *fsFlag
-	if !*use_fec {
-		log.Printf("Not use FEC")
-	}
 	if fecScheme == "rs" {
 		fs = quic.ReedSolomonFECScheme
 		log.Printf("RS")
@@ -159,11 +179,10 @@ func main() {
 		FECScheme:                         fs,
 		RedundancyController:              rr,
 		DisableFECRecoveredFrames:         DISABLE_RECOVERED_FRAMES,
-		ProtectReliableStreamFrames:       *use_fec,
-		UseFastRetransmit:                 true,
+		ProtectReliableStreamFrames:       true,
+		UseFastRetransmit:                 true || *EnhanceScheme == "lr", // 后续可能会改变条件
 		OnlySendFECWhenApplicationLimited: RS_WHEN_APPLICATION_LIMITED,
 		// Versions:             []quic.VersionNumber{version},
-
 	}
 
 	//open a fileserver with TLS

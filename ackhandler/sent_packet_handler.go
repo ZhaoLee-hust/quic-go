@@ -73,7 +73,7 @@ type sentPacketHandler struct {
 	stopWaitingManager stopWaitingManager
 
 	// 阈值控制器
-	thresholdController *QUICLRController
+	QUICLRController *QUICLRController
 
 	retransmissionQueue []*Packet
 	// 类型为ByteCount
@@ -137,6 +137,13 @@ type sentPacketHandler struct {
 
 	// 直接把RDFrame放在这里就可以了
 	rdFrame *wire.RDFrame
+
+	// FOR TEST
+	RDFrames        [][2]uint16 // dPn,dTn
+	SymbolACKFrames [][2]uint64 // nSymbols MaxSymbol
+	Thresholds      [][2]uint64 // TimeThreshol PacketThrehsold
+	Statistic       [][3]uint64 // Packets Retrans Loss
+	SRTTS           []time.Duration
 }
 
 var _ SentPacketHandler = &sentPacketHandler{}
@@ -174,31 +181,40 @@ func NewSentPacketHandler(
 		onPacketLost:       onPacketLost,
 		onPacketReceived:   onPacketAcked,
 		useFastRetransmit:  useFastRetransmit,
-		// thresholdController: NewThreshController(),
+		// QUICLRController: NewThreshController(),
 	}
 
-	handler.thresholdController = NewThreshController(handler.GetStatistics, handler.rttStats)
+	if protocol.QUIC_LR {
+		handler.QUICLRController = NewThreshController(handler.GetStatistics, handler.rttStats)
+	}
 	return handler
 }
 
 // FOR QUIC-RD
 func (h *sentPacketHandler) HandleRDFrame(frame *wire.RDFrame) {
 	h.rdFrame = frame
+	// FOR TEST!
+	h.RDFrames = append(h.RDFrames, [2]uint16{frame.MaxDisPlacement, frame.MaxDelay})
 }
 
 // FOR QUIC-LR
 func (h *sentPacketHandler) ReceiveSymbolAck(frame *wire.SymbolAckFrame, nNumberOfSymbolsSent uint64) {
 	h.ackedSymbol = uint64(frame.SymbolReceived)
-	h.thresholdController.updateThreshold(frame)
-	fmt.Printf("最新TT: %v, 最新PT: %v \n", h.thresholdController.getTimeThreshold(), h.thresholdController.getPacketThreshold())
+	if h.QUICLRController != nil {
+		h.QUICLRController.updateThreshold(frame)
+		utils.Debugf("最新TT: %v, 最新PT: %v \n", h.QUICLRController.getTimeThreshold(), h.QUICLRController.getPacketThreshold())
+	}
+	// FOR TEST!
+	h.SymbolACKFrames = append(h.SymbolACKFrames, [2]uint64{uint64(frame.SymbolReceived), uint64(frame.MaxSymbolReceived)})
 }
 
 func (h *sentPacketHandler) GetAckedSymbols() uint64 {
 	return h.ackedSymbol
 }
 
-func (h *sentPacketHandler) GetthresholdStatistic() ([]map[uint64][2]float64, []map[uint64][2]uint64, []map[uint64][2]uint64) {
-	return h.thresholdController.thresholdStatistic, h.thresholdController.symbolsStatistic, h.thresholdController.pktStatistic
+// 针对QUIC LR
+func (h *sentPacketHandler) GetTransmissionStatistic() ([][2]uint16, [][2]uint64, [][2]uint64, [][3]uint64, []time.Duration) {
+	return h.RDFrames, h.SymbolACKFrames, h.Thresholds, h.Statistic, h.SRTTS
 }
 
 func (h *sentPacketHandler) GetStatistics() (uint64, uint64, uint64) {
@@ -592,9 +608,9 @@ func (h *sentPacketHandler) detectLostPackets() {
 	var timeThreshold float64 = timeReorderingFraction
 	var packetThreshold uint16 = kReorderingThreshold
 
-	if protocol.QUIC_LR {
-		timeThreshold = h.thresholdController.getTimeThreshold()
-		pt := h.thresholdController.getPacketThreshold()
+	if h.QUICLRController != nil {
+		timeThreshold = h.QUICLRController.getTimeThreshold()
+		pt := h.QUICLRController.getPacketThreshold()
 		packetThreshold = uint16(pt)
 	}
 
@@ -603,8 +619,13 @@ func (h *sentPacketHandler) detectLostPackets() {
 	if protocol.QUIC_RD && h.rdFrame != nil {
 		delayUntilLost = delayUntilLost + time.Millisecond*time.Duration(h.rdFrame.MaxDelay)
 		packetThreshold += h.rdFrame.MaxDisPlacement
-		fmt.Printf("QUIC-RD Controlling! New time = %v(%v Increased), New PT = %v\n", delayUntilLost.Milliseconds(), h.rdFrame.MaxDelay, packetThreshold)
+		utils.Debugf("QUIC-RD Controlling! New time = %v(%v Increased), New PT = %v\n", delayUntilLost.Milliseconds(), h.rdFrame.MaxDelay, packetThreshold)
 	}
+
+	// FOR TEST
+	h.Thresholds = append(h.Thresholds, [2]uint64{uint64(delayUntilLost.Microseconds()), uint64(packetThreshold)})
+	h.Statistic = append(h.Statistic, [3]uint64{h.packets, h.retransmissions, h.losses})
+	h.SRTTS = append(h.SRTTS, time.Duration(time.Duration(maxRTT).Milliseconds()))
 
 	var lostPackets []*PacketElement
 	// 遍历history
@@ -620,7 +641,7 @@ func (h *sentPacketHandler) detectLostPackets() {
 		timeSinceSent := now.Sub(packet.SendTime)
 		// 如果使用快传,且最大被确认数大于3,且当前数据包号小于最大确认数-3;从发送到现在的时间大于1.25个maxRTT
 		// if (h.useFastRetransmit && h.LargestAcked >= kReorderingThreshold && packet.PacketNumber <= h.LargestAcked-kReorderingThreshold) || timeSinceSent > delayUntilLost {
-		if protocol.QUIC_LR {
+		if h.QUICLRController != nil {
 			var reason LossTrigger
 			if h.LargestAcked >= protocol.PacketNumber(packetThreshold) && packet.PacketNumber <= h.LargestAcked-protocol.PacketNumber(packetThreshold) {
 				reason = lossByDuplicate
@@ -629,7 +650,7 @@ func (h *sentPacketHandler) detectLostPackets() {
 				reason = lossByDelay
 			}
 			if reason != noLoss {
-				h.thresholdController.OnPacketLostBy(reason)
+				h.QUICLRController.OnPacketLostBy(reason)
 			}
 		}
 		// RACK是默认启用，FACK是可选的，FACK在乱序的时候有很大影响

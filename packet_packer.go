@@ -11,6 +11,7 @@ import (
 	"github.com/lucas-clemente/quic-go/ackhandler"
 	"github.com/lucas-clemente/quic-go/internal/handshake"
 	"github.com/lucas-clemente/quic-go/internal/protocol"
+	"github.com/lucas-clemente/quic-go/internal/utils"
 	"github.com/lucas-clemente/quic-go/internal/wire"
 )
 
@@ -429,27 +430,40 @@ func (p *packetPacker) composeNextPacket(
 		}
 
 		// TODO: Simplify
+		var lastFrame *wire.StreamFrame
 		for _, f := range fs {
 			payloadFrames = append(payloadFrames, f)
 			if f.FinBit {
-				// utils.Infof("Stream Frame Transmission Completed, time=%v", time.Now())
-				m := pth.rttStats.Windows
-				mjson, _ := json.Marshal(m)
-				// _ = ioutil.WriteFile(fmt.Sprintf("./%s_%d.json", protocol.FILE_CONTAINING_CWIN, pth.pathID), mjson, 0644)
-				_ = os.WriteFile(fmt.Sprintf("./%s_%d.json", protocol.FILE_CONTAINING_CWIN, pth.pathID), mjson, 0644)
-
-				threshold, symbols, pkts := pth.sentPacketHandler.GetthresholdStatistic()
-				mjson, _ = json.Marshal(threshold)
-				_ = os.WriteFile("threshold.json", mjson, 0644)
-
-				mjson, _ = json.Marshal(symbols)
-				_ = os.WriteFile("symbols.json", mjson, 0644)
-
-				mjson, _ = json.Marshal(pkts)
-				_ = os.WriteFile("packets.json", mjson, 0644)
-
-				// log.Println("number of frames: ", p.sess.ACKFrames)
+				lastFrame = f
 			}
+		}
+
+		if lastFrame != nil {
+			utils.Infof("发送端发送了最后一个流帧。")
+			// utils.Infof("Stream Frame Transmission Completed, time=%v", time.Now())
+			m := pth.rttStats.Windows
+			mjson, _ := json.Marshal(m)
+			// _ = ioutil.WriteFile(fmt.Sprintf("./%s_%d.json", protocol.FILE_CONTAINING_CWIN, pth.pathID), mjson, 0644)
+			_ = os.WriteFile("server_CWIN.json", mjson, 0644)
+
+			RDFrame, SymbolACKFrame, Thresholds, PktStatistic, RTTS := pth.sentPacketHandler.GetTransmissionStatistic()
+
+			mjson, _ = json.Marshal(RDFrame)
+			_ = os.WriteFile("server_RDFrame.json", mjson, 0644)
+
+			mjson, _ = json.Marshal(SymbolACKFrame)
+			_ = os.WriteFile("server_SymbolACKFrame.json", mjson, 0644)
+
+			mjson, _ = json.Marshal(Thresholds)
+			_ = os.WriteFile("server_Thresholds.json", mjson, 0644)
+
+			// h.packets, h.retransmissions, h.losses}
+			mjson, _ = json.Marshal(PktStatistic)
+			_ = os.WriteFile("server_PktStatistic.json", mjson, 0644)
+
+			mjson, _ = json.Marshal(RTTS)
+			_ = os.WriteFile("server_RTTS.json", mjson, 0644)
+
 		}
 
 		// 这会导致整个payload都只有FEC
