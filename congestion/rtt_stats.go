@@ -1,8 +1,9 @@
 package congestion
 
 import (
-	"github.com/lucas-clemente/quic-go/internal/protocol"
 	"time"
+
+	"github.com/lucas-clemente/quic-go/internal/protocol"
 
 	"github.com/lucas-clemente/quic-go/internal/utils"
 )
@@ -32,6 +33,9 @@ type RTTStats struct {
 	latestRTT          time.Duration
 	smoothedRTT        time.Duration
 	meanDeviation      time.Duration
+
+	// add by zhaolee
+	rttVar time.Duration
 
 	numMinRTTsamplesRemaining uint32
 
@@ -68,6 +72,10 @@ func (r *RTTStats) RecentMinRTT() time.Duration { return r.recentMinRTT.rtt }
 // SmoothedRTT returns the EWMA smoothed RTT for the connection.
 // May return Zero if no valid updates have occurred.
 func (r *RTTStats) SmoothedRTT() time.Duration { return r.smoothedRTT }
+
+// add by zhaolee, rttVar
+// May return Zero if no valid updates have occurred.
+func (r *RTTStats) RttVar() time.Duration { return r.rttVar }
 
 // GetQuarterWindowRTT gets the quarter window RTT
 func (r *RTTStats) GetQuarterWindowRTT() time.Duration { return r.quarterWindowRTT.rtt }
@@ -111,9 +119,13 @@ func (r *RTTStats) UpdateRTT(sendDelta, ackDelay time.Duration, now time.Time) {
 	if r.smoothedRTT == 0 {
 		r.smoothedRTT = sample
 		r.meanDeviation = sample / 2
+		// add by zhaolee
+		r.rttVar = sample / 2
 	} else {
 		r.meanDeviation = time.Duration(oneMinusBeta*float32(r.meanDeviation/time.Microsecond)+rttBeta*float32(utils.AbsDuration(r.smoothedRTT-sample)/time.Microsecond)) * time.Microsecond
 		r.smoothedRTT = time.Duration((float32(r.smoothedRTT/time.Microsecond)*oneMinusAlpha)+(float32(sample/time.Microsecond)*rttAlpha)) * time.Microsecond
+		// add by zhaolee
+		r.rttVar = time.Duration(oneMinusBeta*float32(r.rttVar) + rttBeta*float32(utils.AbsDuration((r.smoothedRTT)-(sample))))
 	}
 }
 

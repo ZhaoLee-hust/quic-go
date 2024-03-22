@@ -47,7 +47,7 @@ func main() {
 	port := flag.String("port", "6121", "The port will listen on")
 	filename := flag.String("f", "file2", "Filename")
 
-	// use_fec := flag.Bool("u", false, "whether use FEC")
+	use_fec := flag.Bool("fec", false, "whether use FEC")
 	rc := flag.String("rc", "c", "choose a redundancy controller")
 	keylog := flag.String("key", "/home/zhaolee/go/src/github.com/lucas-clemente/quic-go/example/client_benchmarker/key.log", "key log file")
 
@@ -55,21 +55,30 @@ func main() {
 
 	flag.Parse()
 
-	if *EnhanceScheme == "lr" {
-		log.Printf("开启QUIC-LR策略!")
+	if *use_fec {
+		log.Printf("开启FEC机制!\n")
+	}
 
+	if *EnhanceScheme == "lr" {
+		log.Printf("开启QUIC-LR策略!默认开启FEC!\n")
 		protocol.QUIC_LR = true
 		protocol.QUIC_RD = false
+		protocol.QUIC_D = false
 	} else if *EnhanceScheme == "rd" {
-		log.Printf("开启QUIC-RD策略!")
-
+		log.Printf("开启QUIC-RD策略!\n")
 		protocol.QUIC_LR = false
 		protocol.QUIC_RD = true
-	} else {
-		log.Printf("QUIC-LR和QUIC-RD均不启用!")
-
+		protocol.QUIC_D = false
+	} else if *EnhanceScheme == "d" {
+		log.Printf("开启QUIC-D策略!\n")
 		protocol.QUIC_LR = false
 		protocol.QUIC_RD = false
+		protocol.QUIC_D = true
+	} else {
+		log.Printf("QUIC-LR,QUIC-RD和QUIC-D均不启用!\n")
+		protocol.QUIC_LR = false
+		protocol.QUIC_RD = false
+		protocol.QUIC_D = false
 	}
 
 	//config logfile
@@ -95,6 +104,12 @@ func main() {
 	// 	defer logfile.Close()
 	// 	log.SetOutput(logfile)
 	// }
+	logfile, err := os.Create("clientLog.txt")
+	if err != nil {
+		panic(err)
+	}
+	defer logfile.Close()
+	log.SetOutput(logfile)
 
 	//config multipath
 	var maxPathID uint8
@@ -152,7 +167,7 @@ func main() {
 		FECScheme:                         fs,
 		RedundancyController:              rr,
 		DisableFECRecoveredFrames:         DISABLE_RECOVERED_FRAMES,
-		ProtectReliableStreamFrames:       true || *EnhanceScheme == "lr",
+		ProtectReliableStreamFrames:       *use_fec || *EnhanceScheme == "lr", //显示指定或者使用lr策略
 		UseFastRetransmit:                 true,
 		OnlySendFECWhenApplicationLimited: RS_WHEN_APPLICATION_LIMITED,
 	}
@@ -195,9 +210,9 @@ func main() {
 
 			// fmt.Println(body)
 			elapsed := time.Since(start)
-			log.Printf("transfer length: %d", body.Len())
-			// fmt.Sprintln("transfer time:", elapsed)
-			log.Printf("transfer time: %s", elapsed)
+			// log.Printf("transfer length: %d", body.Len())
+			// // fmt.Sprintln("transfer time:", elapsed)
+			// log.Printf("transfer time: %s", elapsed)
 
 			// 微秒单位
 			mjson, _ := json.Marshal([]int64{elapsed.Microseconds()})

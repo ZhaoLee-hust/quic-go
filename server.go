@@ -143,7 +143,7 @@ func ListenImpl(pconn net.PacketConn, tlsConf *tls.Config, config *Config, pconn
 	}
 	go s.serve()
 	utils.Debugf("Listening for %s connections on %s", pconn.LocalAddr().Network(), pconn.LocalAddr().String())
-	log.Printf("Listening for %s connections on %s", pconn.LocalAddr().Network(), pconn.LocalAddr().String())
+	log.Printf("(server.go, line 146)Listening for %s connections on %s\n", pconn.LocalAddr().Network(), pconn.LocalAddr().String())
 
 	return s, nil
 }

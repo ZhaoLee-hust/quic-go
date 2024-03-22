@@ -608,6 +608,7 @@ func (h *sentPacketHandler) detectLostPackets() {
 	var timeThreshold float64 = timeReorderingFraction
 	var packetThreshold uint16 = kReorderingThreshold
 
+	// QUIC-LR
 	if h.QUICLRController != nil {
 		timeThreshold = h.QUICLRController.getTimeThreshold()
 		pt := h.QUICLRController.getPacketThreshold()
@@ -616,16 +617,22 @@ func (h *sentPacketHandler) detectLostPackets() {
 
 	delayUntilLost := time.Duration((1.0 + timeThreshold) * maxRTT)
 
+	// QUIC-RD
 	if protocol.QUIC_RD && h.rdFrame != nil {
 		delayUntilLost = delayUntilLost + time.Millisecond*time.Duration(h.rdFrame.MaxDelay)
 		packetThreshold += h.rdFrame.MaxDisPlacement
 		utils.Debugf("QUIC-RD Controlling! New time = %v(%v Increased), New PT = %v\n", delayUntilLost.Milliseconds(), h.rdFrame.MaxDelay, packetThreshold)
 	}
 
+	if protocol.QUIC_D {
+		delayUntilLost = time.Duration((1.0+timeThreshold)*maxRTT + float64(4*h.rttStats.RttVar()))
+		utils.Debugf("QUIC-D Controlling! New time = %v(%v Increased)", delayUntilLost.Milliseconds(), 4*h.rttStats.RttVar().Milliseconds())
+	}
+
 	// FOR TEST
 	h.Thresholds = append(h.Thresholds, [2]uint64{uint64(delayUntilLost.Microseconds()), uint64(packetThreshold)})
 	h.Statistic = append(h.Statistic, [3]uint64{h.packets, h.retransmissions, h.losses})
-	h.SRTTS = append(h.SRTTS, time.Duration(time.Duration(maxRTT).Milliseconds()))
+	h.SRTTS = append(h.SRTTS, utils.MaxDuration(h.rttStats.LatestRTT(), h.rttStats.SmoothedRTT()))
 
 	var lostPackets []*PacketElement
 	// 遍历history

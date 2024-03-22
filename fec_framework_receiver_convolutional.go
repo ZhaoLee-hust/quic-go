@@ -184,7 +184,7 @@ func (f *FECFrameworkReceiverConvolutional) parseAndSendRecoveredPacket(recovere
 		}
 		f.recoveredPackets <- rp
 	} else {
-		log.Printf("Error when parsing header of recovered packet : %s", err.Error())
+		log.Printf("Error when parsing header of recovered packet : %s\n", err.Error())
 	}
 }
 

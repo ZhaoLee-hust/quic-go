@@ -182,7 +182,7 @@ func (f *FECFrameworkSender) HandlePacketAndMaybePushRS(packet []byte, hdr *wire
 		symbols := fecContainer.GetRepairSymbols()
 		f.fecFramer.pushRepairSymbols(symbols)
 		f.numberOfSymbols += uint64(len(symbols))
-		utils.Debugf("numberOfSymbols has been sent: %d", f.numberOfSymbols)
+		utils.Debugf("numberOfSymbols has been sent: %d\n", f.numberOfSymbols)
 	}
 
 	// if f.redundancyController.GetNumberOfDataSymbols()

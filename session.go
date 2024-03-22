@@ -911,7 +911,7 @@ func (s *session) handleStreamFrame(frame *wire.StreamFrame) error {
 		symbolSent := s.fecFrameworkSender.numberOfSymbols
 		symbolRcv := s.fecFrameworkReceiver.GetNumberOfRepairSymbols()
 		// for client
-		log.Printf("(session Line 895:)Number of Symbol have been sent: %d, Acked: %d", symbolSent, symbolRcv)
+		log.Printf("(session.go Line 895:)Number of Symbol have been sent: %d, Acked: %d\n", symbolSent, symbolRcv)
 
 		s.pathsLock.RUnlock()
 	}
@@ -1124,11 +1124,11 @@ func (s *session) sendPackedPacket(packet *packedPacket, pth *path) error {
 			if frame.FinBit {
 				foundFinbitInStreamFrame = true
 				// Last packet to send on the stream, print stats
-				log.Printf("Info for stream %x of %x", frame.StreamID, s.GetConnectionID())
+				log.Printf("Info for stream %x of %x\n", frame.StreamID, s.GetConnectionID())
 				for pathID, pth := range s.Paths() {
 					sntPkts, sntRetrans, sntLost := pth.sentPacketHandler.GetStatistics()
 					rcvPkts, recoveredPkts := pth.receivedPacketHandler.GetStatistics()
-					log.Printf("Path %x: sent %d retrans %d lost %d; retransRatio %f lossRatio %f; rcv %d, recovered %d", pathID, sntPkts, sntRetrans, sntLost, float64(sntRetrans)/float64(sntPkts), float64(sntLost)/float64(sntPkts), rcvPkts, recoveredPkts)
+					log.Printf("Path %x: sent %d retrans %d lost %d; retransRatio %f lossRatio %f; rcv %d, recovered %d\n", pathID, sntPkts, sntRetrans, sntLost, float64(sntRetrans)/float64(sntPkts), float64(sntLost)/float64(sntPkts), rcvPkts, recoveredPkts)
 				}
 
 			}
@@ -1141,7 +1141,7 @@ func (s *session) sendPackedPacket(packet *packedPacket, pth *path) error {
 	if foundFinbitInStreamFrame {
 		symbolSent := s.fecFrameworkSender.numberOfSymbols
 		symbolAcked := s.paths[protocol.InitialPathID].sentPacketHandler.GetAckedSymbols()
-		log.Printf("session Line 1115:)Number of Symbol have been sent: %d, %d", symbolSent, symbolAcked)
+		log.Printf("session Line 1115:)Number of Symbol have been sent: %d, %d\n", symbolSent, symbolAcked)
 		// symbolRcv := s.fecFrameworkSender.numberOfSymbolsAcked
 		// if symbolSent > 0 {
 		// 	log.Printf("(session Line 1115:)Number of Symbol have been sent: %d, Acked: %d, lossRate: %f", symbolSent, symbolRcv, 1-float64(symbolRcv)/float64(symbolSent))

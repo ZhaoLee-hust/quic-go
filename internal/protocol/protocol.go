@@ -17,6 +17,7 @@ type SymbolNumber uint64
 // add by zhaolee
 var QUIC_LR = false
 var QUIC_RD = false
+var QUIC_D = false
 
 // PacketNumberLen is the length of the packet number in bytes
 type PacketNumberLen uint8

@@ -53,7 +53,7 @@ func main() {
 	cache := flag.Bool("c", false, "cache handshake information")
 	port := flag.String("port", "6121", "The port will listen on")
 	// output := flag.String("o", "", "logging output")
-	// use_fec := flag.Bool("u", false, "whether use FEC")
+	use_fec := flag.Bool("u", false, "whether use FEC")
 	rc := flag.String("rc", "c", "choose a redundancy controller")
 	// lossRate := flag.Int("l", 0, "Set LossRate")
 
@@ -61,21 +61,30 @@ func main() {
 
 	flag.Parse()
 
-	if *EnhanceScheme == "lr" {
-		log.Printf("开启QUIC-LR策略!")
+	if *use_fec {
+		log.Printf("开启FEC机制!\n")
+	}
 
+	if *EnhanceScheme == "lr" {
+		log.Printf("开启QUIC-LR策略!默认开启FEC!\n")
 		protocol.QUIC_LR = true
 		protocol.QUIC_RD = false
+		protocol.QUIC_D = false
 	} else if *EnhanceScheme == "rd" {
-		log.Printf("开启QUIC-RD策略!")
-
+		log.Printf("开启QUIC-RD策略!\n")
 		protocol.QUIC_LR = false
 		protocol.QUIC_RD = true
-	} else {
-		log.Printf("QUIC-LR和QUIC-RD均不启用!")
-
+		protocol.QUIC_D = false
+	} else if *EnhanceScheme == "d" {
+		log.Printf("开启QUIC-D策略!\n")
 		protocol.QUIC_LR = false
 		protocol.QUIC_RD = false
+		protocol.QUIC_D = true
+	} else {
+		log.Printf("QUIC-LR,QUIC-RD和QUIC-D均不启用!\n")
+		protocol.QUIC_LR = false
+		protocol.QUIC_RD = false
+		protocol.QUIC_D = false
 	}
 
 	utils.SetLogLevel(utils.LogLevelError)
@@ -120,6 +129,12 @@ func main() {
 	// }
 
 	// log.Println(LogFilePath + logFileName)
+	logfile, err := os.Create("serverLog.txt")
+	if err != nil {
+		panic(err)
+	}
+	defer logfile.Close()
+	log.SetOutput(logfile)
 
 	//config TLS
 	certFile := certPath + "/fullchain.pem"
@@ -170,7 +185,7 @@ func main() {
 	} else if redundancyController == "c" {
 		rr = rrConstant
 	}
-	log.Printf("RC Scheme: %s", redundancyController)
+	log.Printf("RC Scheme: %s\n", redundancyController)
 
 	//config quicConfig
 	quicConfig := &quic.Config{
@@ -180,7 +195,7 @@ func main() {
 		RedundancyController:              rr,
 		DisableFECRecoveredFrames:         DISABLE_RECOVERED_FRAMES,
 		ProtectReliableStreamFrames:       true,
-		UseFastRetransmit:                 true || *EnhanceScheme == "lr", // 后续可能会改变条件
+		UseFastRetransmit:                 *use_fec || *EnhanceScheme == "lr", // 后续可能会改变条件
 		OnlySendFECWhenApplicationLimited: RS_WHEN_APPLICATION_LIMITED,
 		// Versions:             []quic.VersionNumber{version},
 	}
